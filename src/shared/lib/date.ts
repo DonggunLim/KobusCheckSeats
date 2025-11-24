@@ -84,3 +84,43 @@ export function getTargetDateKST(
   const targetDateObj = new Date(year, month - 1, day);
   return formatDateKST(targetDateObj);
 }
+
+/**
+ * 가장 최근 월요일 03시 데이터 업데이트 날짜를 반환
+ * 매주 월요일 03:00에 데이터가 업데이트되므로, 가장 최근 업데이트 날짜 계산
+ */
+export function getLastMondayUpdate(): string {
+  const now = new Date();
+  const kstNow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })
+  );
+
+  const dayOfWeek = kstNow.getDay(); // 0(일) ~ 6(토)
+  const currentHour = kstNow.getHours();
+
+  let daysToSubtract = 0;
+
+  if (dayOfWeek === 1 && currentHour >= 3) {
+    // 월요일이고 03시 이후면 오늘이 업데이트 날짜
+    daysToSubtract = 0;
+  } else if (dayOfWeek === 0) {
+    // 일요일이면 6일 전 (지난 월요일)
+    daysToSubtract = 6;
+  } else if (dayOfWeek === 1) {
+    // 월요일이지만 03시 이전이면 지난주 월요일
+    daysToSubtract = 7;
+  } else {
+    // 화~토요일이면 이번주 월요일
+    daysToSubtract = dayOfWeek - 1;
+  }
+
+  const lastMonday = new Date(kstNow);
+  lastMonday.setDate(kstNow.getDate() - daysToSubtract);
+
+  // YYYY년 MM월 DD일 형식으로 반환
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(lastMonday);
+}

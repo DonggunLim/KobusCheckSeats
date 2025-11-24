@@ -21,7 +21,7 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "bradlc.vscode-tailwindcss",
-        "Prisma.prisma",
+        "Prisma.prisma@6.19.0",
         "ms-azuretools.vscode-docker",
         "yoavbls.pretty-ts-errors"
       ],

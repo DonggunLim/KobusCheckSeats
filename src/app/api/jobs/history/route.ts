@@ -18,6 +18,13 @@ export async function GET(request: NextRequest) {
       where: whereClause,
       orderBy: { createdAt: "desc" },
       take: limit,
+      include: {
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
 
     // JSON 파싱 (터미널 이름은 이미 저장되어 있음)

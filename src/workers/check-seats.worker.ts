@@ -8,6 +8,7 @@ import { getKSTNow } from "../shared/lib/date";
 import { createKakaoEvent } from "../shared/lib/kakao/kakao-calendar";
 import { sendKakaoMessage } from "@/shared/lib/kakao/kakao-message";
 import { getKakaoAccessToken } from "@/shared/lib/kakao/kakao-token";
+import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
 
 // 워커 생성
 const worker = new Worker<CheckSeatsJobData>(
@@ -42,11 +43,18 @@ const worker = new Worker<CheckSeatsJobData>(
     if (!shouldContinue) {
       console.log(`[Worker] 목표 날짜/시간 도달 - 작업 종료`);
       // DB 업데이트: 시간 초과로 완료
-      await updateJobStatus(job.id as string, "completed", job.attemptsMade, {
+      await updateJobStatus(
+        job.id as string,
+        "cancelled",
+        job.attemptsMade,
+        { foundSeats: false },
+        undefined,
+        JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND
+      );
+      return {
         foundSeats: false,
-        reason: "목표 시간 초과",
-      });
-      return { foundSeats: false, reason: "목표 시간 초과" };
+        reason: JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND,
+      };
     }
 
     try {
@@ -141,7 +149,8 @@ async function updateJobStatus(
   status: string,
   retryCount?: number,
   result?: any,
-  error?: string
+  error?: string,
+  reason?: string
 ) {
   try {
     // Prisma 타입을 활용한 업데이트 데이터 구성
@@ -162,7 +171,15 @@ async function updateJobStatus(
       updateData.error = error;
     }
 
-    if (status === "completed" || status === "failed") {
+    if (reason) {
+      updateData.reason = reason;
+    }
+
+    if (
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled"
+    ) {
       updateData.completedAt = getKSTNow();
     }
 

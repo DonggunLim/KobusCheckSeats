@@ -34,27 +34,32 @@ export function TimeSelector({
   return (
     <div>
       <label className="block text-sm font-medium text-text-primary mb-2">
-        확인할 시간대 ({selectedTimes.length}개 선택됨)
+        확인할 시간대
+        {selectedTimes.length > 0 && (
+          <span className="ml-2 text-xs text-text-secondary">
+            {selectedTimes.length}개
+          </span>
+        )}
       </label>
 
       {/* 노선 선택 전 안내 메시지 */}
       {!hasRoute ? (
-        <p className="text-sm text-text-secondary py-8 text-center">
+        <p className="text-sm text-text-secondary py-6 text-center">
           출발지와 도착지를 먼저 선택해주세요
         </p>
       ) : loading ? (
-        <p className="text-sm text-text-secondary py-8 text-center">
+        <p className="text-sm text-text-secondary py-6 text-center">
           운행 시간 조회 중...
         </p>
       ) : error ? (
-        <p className="text-sm text-red-accent py-8 text-center">{error}</p>
+        <p className="text-sm text-red-accent py-6 text-center">{error}</p>
       ) : availableTimes.length === 0 ? (
-        <p className="text-sm text-red-accent py-8 text-center">
+        <p className="text-sm text-red-accent py-6 text-center">
           해당 노선의 운행 정보가 없습니다
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2 items-start">
+          <div className="flex flex-wrap gap-2">
             {availableTimes.map((time: string) => {
               const isSelected = selectedTimes.includes(time);
               return (
@@ -62,10 +67,10 @@ export function TimeSelector({
                   key={time}
                   type="button"
                   onClick={() => handleToggle(time)}
-                  className={`min-w-16 rounded-lg border px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                  className={`min-w-14 rounded-md border px-3 py-1.5 text-sm transition-all ${
                     isSelected
-                      ? "border-green-dark bg-green-primary text-white hover:bg-green-dark"
-                      : "border-beige-light bg-cream-bg text-text-primary hover:bg-beige-light"
+                      ? "border-green-primary bg-green-primary/10 text-green-dark font-medium"
+                      : "border-beige-light text-text-primary hover:border-green-primary/50 hover:bg-green-primary/5"
                   }`}
                 >
                   {time}
@@ -74,8 +79,8 @@ export function TimeSelector({
             })}
           </div>
           {hasRoute && selectedTimes.length === 0 && (
-            <p className="mt-2 text-sm text-red-accent">
-              최소 1개 이상의 시간대를 선택해주세요.
+            <p className="mt-3 text-xs text-red-accent">
+              최소 1개 이상 선택해주세요
             </p>
           )}
         </>

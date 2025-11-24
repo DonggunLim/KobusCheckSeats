@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import axios from "axios";
 import type { JobHistoryItem } from "../model/types";
+import { JOB_CANCEL_REASON_LABEL } from "@/shared/constants/job";
 
 interface JobHistoryItemCardProps {
   job: JobHistoryItem;
@@ -11,28 +13,23 @@ interface JobHistoryItemCardProps {
 
 const STATUS_CONFIG = {
   waiting: {
-    bg: "bg-beige-light",
-    text: "text-text-primary",
+    color: "text-text-secondary",
     label: "대기",
   },
   active: {
-    bg: "bg-green-primary",
-    text: "text-white",
+    color: "text-green-primary",
     label: "진행중",
   },
   completed: {
-    bg: "bg-green-dark",
-    text: "text-white",
+    color: "text-green-dark",
     label: "완료",
   },
   failed: {
-    bg: "bg-red-accent",
-    text: "text-white",
+    color: "text-red-accent",
     label: "실패",
   },
   cancelled: {
-    bg: "bg-orange-accent",
-    text: "text-white",
+    color: "text-orange-accent",
     label: "취소",
   },
 };
@@ -41,10 +38,13 @@ export function JobHistoryItemCard({
   job,
   onJobCancelled,
 }: JobHistoryItemCardProps) {
+  const { data: session } = useSession();
   const [isCancelling, setIsCancelling] = useState(false);
   const status = STATUS_CONFIG[job.status];
 
-  const canCancel = job.status === "waiting" || job.status === "active";
+  const isOwner = !job.userId || job.userId === session?.user?.id;
+  const canCancel =
+    (job.status === "waiting" || job.status === "active") && isOwner;
 
   const handleCancel = async () => {
     if (!confirm("정말 이 작업을 취소하시겠습니까?")) {
@@ -64,63 +64,109 @@ export function JobHistoryItemCard({
       setIsCancelling(false);
     }
   };
-
   return (
-    <li className="p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        {/* 노선 정보 */}
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-lg mb-1 text-green-primary">
-            {job.departure} → {job.arrival}
-          </div>
-          <div
-            className="text-sm mb-2"
-            style={{ color: "var(--text-primary)" }}
-          >
-            <span className="font-medium">예약 희망:</span> {job.targetMonth}{" "}
-            {job.targetDate}일 ({job.targetTimes.join(", ")})
-          </div>
-
-          {/* 메타 정보 */}
-          <div className="flex items-center gap-3 text-xs">
-            <span>등록: {job.createdAt.split("T")[0]}</span>
-            {job.retryCount > 0 && (
-              <>
-                <span>·</span>
-                <span className="font-medium text-orange-accent ">
-                  {job.retryCount}회 조회
-                </span>
-              </>
+    <li className="border-b border-beige-light py-4 px-2 hover:bg-cream-bg/50 transition-colors">
+      <div className="flex items-start justify-between gap-4">
+        {/* 좌측: 정보 */}
+        <div className="flex-1 min-w-0 space-y-2">
+          {/* 노선 */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary min-w-10">노선</span>
+            <h3 className="font-semibold text-text-primary">
+              {job.departure} → {job.arrival}
+            </h3>
+            {job.user?.name && (
+              <span className="text-xs text-text-secondary">
+                ({job.user.name} 님)
+              </span>
             )}
           </div>
-        </div>
 
-        {/* 상태 및 취소 버튼 */}
-        <div className="flex flex-col items-end gap-8">
-          {/* 상태 뱃지 */}
-          <span
-            className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.bg} ${status.text}`}
-          >
-            {status.label}
-          </span>
+          {/* 예약 정보 */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary min-w-10">예약</span>
+            <span className="text-sm text-text-primary">
+              {job.targetMonth} {job.targetDate}일 {job.targetTimes.join(", ")}
+            </span>
+          </div>
 
-          {/* 취소 버튼 (waiting, active 상태일 때만 표시) */}
-          {canCancel && (
-            <button
-              onClick={handleCancel}
-              disabled={isCancelling}
-              className="text-xs text-red-accent hover:text-red-accent/80 underline disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              {isCancelling ? "취소 중..." : "취소하기"}
-            </button>
+          {/* 상태 및 등록일 */}
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-text-secondary min-w-10">상태</span>
+              <span
+                className={`font-medium ${status.color} flex items-center gap-1`}
+              >
+                {job.status === "active" && (
+                  <svg
+                    className="animate-spin"
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                )}
+                {status.label}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-text-secondary">등록</span>
+              <span className="text-text-primary">
+                {job.createdAt.split("T")[0]}
+              </span>
+            </div>
+            {job.retryCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-text-secondary">조회</span>
+                <span className="text-orange-accent font-medium">
+                  {job.retryCount}회
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* 에러/취소 메시지 */}
+          {job.status === "failed" && job.error && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-text-secondary min-w-10">오류</span>
+              <div className="text-xs text-red-accent">{job.error}</div>
+            </div>
+          )}
+          {job.status === "cancelled" && job.reason && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-text-secondary min-w-10">사유</span>
+              <div className="text-xs text-text-secondary">
+                {JOB_CANCEL_REASON_LABEL[job.reason]}
+              </div>
+            </div>
           )}
         </div>
-      </div>
 
-      {/* 에러 메시지 (실패시에만) */}
-      {job.status === "failed" && job.error && (
-        <div className="mt-2 text-xs truncate text-red-accent">{job.error}</div>
-      )}
+        {/* 우측: 취소 버튼 */}
+        {canCancel && (
+          <button
+            onClick={handleCancel}
+            disabled={isCancelling}
+            className="text-xs text-red-accent hover:underline disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {isCancelling ? "취소 중..." : "취소 하기"}
+          </button>
+        )}
+      </div>
     </li>
   );
 }

@@ -28,7 +28,7 @@ export function KakaoSigninButton() {
   return (
     <button
       onClick={() => signIn("kakao")}
-      className="text-sm bg-[#FEE500] text-[#000000] px-4 py-2 rounded-lg font-bold hover:opacity-90 transition-opacity"
+      className="text-sm bg-green-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-[#ffef5c] hover:text-black transition-colors cursor-pointer"
     >
       카카오 로그인
     </button>

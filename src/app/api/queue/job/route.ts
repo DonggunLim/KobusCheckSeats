@@ -6,6 +6,7 @@ import {
 import prisma from "@/shared/lib/prisma";
 import { getKSTNow } from "@/shared/lib/date";
 import { auth } from "@/shared/lib/auth";
+import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
 
 export async function POST(request: NextRequest) {
   try {
@@ -214,6 +215,7 @@ export async function DELETE(request: NextRequest) {
       where: { jobId },
       data: {
         status: "cancelled",
+        reason: JOB_CANCEL_REASON_KEY.USER_CANCELLED,
         updatedAt: getKSTNow(),
         completedAt: getKSTNow(),
       },

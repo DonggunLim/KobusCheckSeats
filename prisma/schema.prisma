@@ -155,11 +155,12 @@ model JobHistory {
   retryCount    Int      @default(0) @map("retry_count")
   result        String?  @map("result") @db.Text
   error         String?  @map("error") @db.Text
+  reason        String?  @map("reason") @db.VarChar(200)
   createdAt     DateTime @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @map("updated_at") @db.DateTime(3)
   completedAt   DateTime? @map("completed_at") @db.DateTime(3)
 
-  userId        String?  @map("user_id") 
+  userId        String?  @map("user_id")
   user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
