@@ -27,7 +27,6 @@
     "ioredis": "^5.8.2",
     "next": "^16.0.0",
     "next-auth": "^5.0.0-beta.30",
-    "playwright": "^1.56.1",
     "prisma": "^6.19.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
