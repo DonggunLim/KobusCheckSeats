@@ -1,13 +1,13 @@
 import { Worker, Job } from "bullmq";
 import { getRedisConnection } from "../shared/lib/redis";
-import { type CheckSeatsJobData } from "../shared/lib/queue";
-import { checkBusSeats } from "./lib/check-bus-seats";
+import { type CheckSeatsJobData } from "../shared/lib/queue/queue";
+import { checkBusSeats } from "./jobs/check-bus-seats";
 import prisma from "../shared/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { getKSTNow } from "../shared/lib/date";
-import { sendKakaoMessage } from "../shared/lib/kakao-message";
-import { createKakaoEvent } from "../shared/lib/kakao-calendar";
-import { getKakaoAccessToken } from "../shared/lib/kakao-token";
+import { createKakaoEvent } from "../shared/lib/kakao/kakao-calendar";
+import { sendKakaoMessage } from "@/shared/lib/kakao/kakao-message";
+import { getKakaoAccessToken } from "@/shared/lib/kakao/kakao-token";
 
 // 워커 생성
 const worker = new Worker<CheckSeatsJobData>(

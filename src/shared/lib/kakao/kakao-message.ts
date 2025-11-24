@@ -1,5 +1,5 @@
+import prisma from "../prisma";
 import { getKakaoAccessToken } from "./kakao-token";
-import prisma from "./prisma";
 
 interface SeatCheckResult {
   config: {
@@ -95,4 +95,3 @@ async function buildMessage(result: SeatCheckResult): Promise<string> {
   날짜: ${targetMonth} ${targetDate}일
   시간: ${availableSeats || firstFoundTime || "예매 가능"}`;
 }
-

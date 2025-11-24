@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCheckSeatsQueue, type CheckSeatsJobData } from "@/shared/lib/queue";
+import {
+  getCheckSeatsQueue,
+  type CheckSeatsJobData,
+} from "@/shared/lib/queue/queue";
 import prisma from "@/shared/lib/prisma";
 import { getKSTNow } from "@/shared/lib/date";
 import { auth } from "@/shared/lib/auth";

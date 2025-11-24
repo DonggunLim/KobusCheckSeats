@@ -1,6 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { getRedisConnection } from "../shared/lib/redis";
-import { MaintenanceJobData } from "../shared/lib/maintenance-queue";
+import { MaintenanceJobData } from "../shared/lib/queue/maintenance-queue";
 import { getMasterData } from "../shared/scripts/update-master-data";
 import { getRoutesSchedules } from "../shared/scripts/update-routes-schedules";
 

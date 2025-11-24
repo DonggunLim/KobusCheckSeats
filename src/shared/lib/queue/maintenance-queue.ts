@@ -1,5 +1,5 @@
 import { Queue } from "bullmq";
-import { getRedisConnection } from "./redis";
+import { getRedisConnection } from "../redis";
 
 // 유지보수 작업의 종류를 정의
 export interface MaintenanceJobData {

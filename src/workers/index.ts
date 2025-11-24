@@ -1,7 +1,7 @@
 import "./check-seats.worker";
 import "./maintenance.worker";
 
-import { getMaintenanceQueue } from "../shared/lib/maintenance-queue";
+import { getMaintenanceQueue } from "../shared/lib/queue/maintenance-queue";
 
 async function scheduleRepeatableJobs() {
   const queue = getMaintenanceQueue();

@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
-import { getRedisConnection } from "./redis";
-import type { RouteQuery } from "../types/bus-check.types";
+import { getRedisConnection } from "../redis";
+import type { RouteQuery } from "../../types/bus-check.types";
 
 // Job 데이터 타입 정의 (Prisma JobHistory와 호환되는 형태)
 export interface CheckSeatsJobData extends RouteQuery {

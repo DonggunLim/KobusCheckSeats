@@ -1,4 +1,4 @@
-import prisma from "./prisma";
+import prisma from "../prisma";
 
 interface KakaoTokenResponse {
   access_token: string;

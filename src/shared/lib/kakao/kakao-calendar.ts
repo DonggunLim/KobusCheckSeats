@@ -1,5 +1,5 @@
 import axios from "axios";
-import prisma from "./prisma";
+import prisma from "../prisma";
 
 interface KakaoEventData {
   departureCd: string;
