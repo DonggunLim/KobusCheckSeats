@@ -1,0 +1,56 @@
+{
+  "name": "Kobus Check Seats",
+  "dockerComposeFile": "../docker-compose.dev.yml",
+  "service": "app",
+  "workspaceFolder": "/app",
+  "runServices": ["app", "worker", "kobus-mysql", "kobus-redis"],
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "upgradePackages": true
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "Prisma.prisma",
+        "ms-azuretools.vscode-docker",
+        "yoavbls.pretty-ts-errors"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "[prisma]": {
+          "editor.defaultFormatter": "Prisma.prisma"
+        }
+      }
+    }
+  },
+
+  "forwardPorts": [3000, 3306, 6379],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js App",
+      "onAutoForward": "notify"
+    },
+    "3306": {
+      "label": "MySQL"
+    },
+    "6379": {
+      "label": "Redis"
+    }
+  },
+
+  "postCreateCommand": "npm install && npx prisma generate"
+}

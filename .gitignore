@@ -43,3 +43,6 @@ next-env.d.ts
 # data
 /data/session.json
 /src/generated/prisma
+
+# claude
+.claude
