@@ -1,5 +1,4 @@
-# Playwright 공식 이미지
-FROM mcr.microsoft.com/playwright:v1.56.1-jammy AS base
+FROM node:22-slim AS base
 
 # --- Install dependencies only when needed ---
 FROM base AS deps
