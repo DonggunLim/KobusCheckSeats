@@ -45,6 +45,7 @@ const adapter: Adapter = {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter,
+  trustHost: true,
   providers: [
     Kakao({
       clientId: process.env.KAKAO_REST_API_KEY,

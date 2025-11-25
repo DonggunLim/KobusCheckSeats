@@ -1,5 +1,8 @@
 FROM node:22-slim AS base
 
+# OpenSSL 설치 
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 # --- Install dependencies only when needed ---
 FROM base AS deps
 WORKDIR /app
