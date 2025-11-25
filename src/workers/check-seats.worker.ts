@@ -193,6 +193,12 @@ async function updateJobStatus(
 }
 
 // 워커 이벤트 리스너
+worker.on("active", async (job: Job) => {
+  console.log(`[Worker] → Job ${job.id} 작업 시작 (active 상태로 전환)`);
+  // DB 상태를 active로 업데이트
+  await updateJobStatus(job.id as string, "active", job.attemptsMade);
+});
+
 worker.on("completed", async (job: Job) => {
   console.log(
     `[Worker] ✓ Job ${job.id} 최종 완료 (총 ${job.attemptsMade}회 시도)`
