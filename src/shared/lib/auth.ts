@@ -45,6 +45,7 @@ const adapter: Adapter = {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter,
+  secret: process.env.AUTH_SECRET,
   trustHost: true,
   providers: [
     Kakao({

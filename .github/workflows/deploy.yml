@@ -87,7 +87,12 @@ jobs:
             echo "REDIS_PORT=${{ secrets.REDIS_PORT }}" >> .env
             echo "GITHUB_TOKEN=${{ secrets.APP_GITHUB_TOKEN }}" >> .env
             echo "GITHUB_REPOSITORY=${{ secrets.APP_GITHUB_REPOSITORY }}" >> .env
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env 
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
+            echo "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" >> .env
+            echo "AUTH_SECRET=${{ secrets.AUTH_SECRET }}" >> .env
+            echo "AUTH_TRUST_HOST=${{ secrets.AUTH_TRUST_HOST }}" >> .env
+            echo "KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}" >> .env
+            echo "KAKAO_CLIENT_SECRET_KEY=${{ secrets.KAKAO_CLIENT_SECRET_KEY }}" >> .env 
 
             # GHCR 로그인
             echo "${{ secrets.APP_GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
