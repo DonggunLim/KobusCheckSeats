@@ -39,6 +39,10 @@ export function useSearchPanel() {
 
   // 날짜 변경 핸들러
   const handleDateChange = (date: string) => {
+    const today = getTodayDate();
+    if (date < today) {
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       date,
