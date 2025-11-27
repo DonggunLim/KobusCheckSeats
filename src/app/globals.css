@@ -9,6 +9,7 @@
   --color-red-accent: #a53f3f;
   --color-text-primary: #3a4442;
   --color-text-secondary: #6b7280;
+  --z-toast: 9999;
 }
 
 :root {
