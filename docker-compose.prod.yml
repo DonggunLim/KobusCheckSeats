@@ -4,8 +4,6 @@ services:
     image: ghcr.io/donggunlim/kobuscheckseat:app-latest
     container_name: kobus-app
     command: ["./entrypoint.app.sh"]
-    ports:
-      - "3000:3000"
     environment:
       - NODE_ENV=production
       - TZ=Asia/Seoul
