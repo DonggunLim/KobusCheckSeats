@@ -3,7 +3,7 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-class MemoryCache {
+export class MemoryCache {
   private store = new Map<string, CacheEntry<unknown>>();
 
   get<T>(key: string): T | undefined {
@@ -36,7 +36,7 @@ class MemoryCache {
 export const cache = new MemoryCache();
 
 export const TTL = {
-  AREAS: 24 * 60 * 60 * 1000,      // 24 hours
-  TERMINALS: 24 * 60 * 60 * 1000,  // 24 hours
-  SCHEDULES: 6 * 60 * 60 * 1000,   // 6 hours
+  AREAS: 24 * 60 * 60 * 1000, // 24 hours
+  TERMINALS: 24 * 60 * 60 * 1000, // 24 hours
+  SCHEDULES: 6 * 60 * 60 * 1000, // 6 hours
 } as const;
