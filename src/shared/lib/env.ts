@@ -14,9 +14,19 @@ const serverEnvSchema = z.object({
 });
 
 function validateEnv() {
+  const isCI = process.env.GITHUB_ACTIONS === "true";
+  const skipValidation = process.env.SKIP_ENV_VALIDATION === "true" || isCI;
+
   const parsed = serverEnvSchema.safeParse(process.env);
 
   if (!parsed.success) {
+    if (skipValidation) {
+      console.warn(
+        "⚠️  Some environment variables are missing, but skipping validation (CI/Build context)."
+      );
+      return process.env as unknown as z.infer<typeof serverEnvSchema>;
+    }
+
     const errors = parsed.error.flatten().fieldErrors;
     const errorMessages = Object.entries(errors)
       .map(([key, msgs]) => `  - ${key}: ${msgs?.join(", ")}`)

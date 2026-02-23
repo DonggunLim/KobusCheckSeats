@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id;
 
     // Rate limiting
-    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+    const ip =
+      request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
     const limited = await rateLimitJobSubmit(userId, ip);
     if (limited) return limited;
 
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
     const parsed = parseBody(queueJobSchema, body);
     if (!parsed.success) return parsed.response;
 
-    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes, scheduleId } = parsed.data;
+    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes, scheduleId } =
+      parsed.data;
 
     // 목표 시간까지 필요한 attempts 계산
     const nowKST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
