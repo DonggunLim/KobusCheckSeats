@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id;
 
     // Rate limiting
-    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
+    const ip =
+      request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
     const limited = await rateLimitJobSubmit(userId, ip);
     if (limited) return limited;
 
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
     const parsed = parseBody(queueJobSchema, body);
     if (!parsed.success) return parsed.response;
 
-    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes, scheduleId } = parsed.data;
+    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes, scheduleId } =
+      parsed.data;
 
     // 목표 시간까지 필요한 attempts 계산
     const nowKST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
@@ -112,29 +114,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = session.user.id;
-
     const parsed = parseSearchParams(jobIdSchema, request.nextUrl.searchParams);
     if (!parsed.success) return parsed.response;
     const { jobId } = parsed.data;
-
-    // 소유권 검증
-    const jobHistory = await prisma.jobHistory.findUnique({
-      where: { jobId },
-      select: { userId: true },
-    });
-
-    if (!jobHistory) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    if (jobHistory.userId !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const queue = getCheckSeatsQueue();
     const job = await queue.getJob(jobId);
