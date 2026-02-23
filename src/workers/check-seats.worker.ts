@@ -9,18 +9,18 @@ import { createKakaoEvent } from "../shared/lib/kakao/kakao-calendar";
 import { sendKakaoMessage } from "@/shared/lib/kakao/kakao-message";
 import { getKakaoAccessToken } from "@/shared/lib/kakao/kakao-token";
 import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
+import { publishJobStatusUpdate } from "@/shared/lib/queue/job-events";
+import { logger } from "@/shared/lib/logger";
+
+const log = logger.child({ module: "check-seats-worker" });
 
 // 워커 생성
 const worker = new Worker<CheckSeatsJobData>(
   "check-seats",
   async (job: Job<CheckSeatsJobData>) => {
-    console.log(
-      `[Worker] Processing job ${job.id} (시도 ${job.attemptsMade + 1}회)`,
-      job.data
-    );
+    log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Processing job");
 
-    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes } =
-      job.data;
+    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes } = job.data;
 
     // DB에서 취소 여부 먼저 체크
     const jobHistory = await prisma.jobHistory.findUnique({
@@ -29,36 +29,28 @@ const worker = new Worker<CheckSeatsJobData>(
     });
 
     if (jobHistory?.status === "cancelled") {
-      console.log(`[Worker] Job ${job.id} 이미 취소됨 - 작업 중단`);
+      log.info({ jobId: job.id }, "Job already cancelled, skipping");
       return { foundSeats: false, reason: "사용자가 작업을 취소함" };
     }
 
     // 목표 날짜/시간이 지났는지 체크
-    const shouldContinue = checkShouldContinue(
-      targetMonth,
-      targetDate,
-      targetTimes
-    );
+    const shouldContinue = checkShouldContinue(targetMonth, targetDate, targetTimes);
 
     if (!shouldContinue) {
-      console.log(`[Worker] 목표 날짜/시간 도달 - 작업 종료`);
-      // DB 업데이트: 시간 초과로 완료
+      log.info({ jobId: job.id }, "Target time passed, cancelling job");
       await updateJobStatus(
         job.id as string,
         "cancelled",
+        job.data.userId,
         job.attemptsMade,
         { foundSeats: false },
         undefined,
         JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND
       );
-      return {
-        foundSeats: false,
-        reason: JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND,
-      };
+      return { foundSeats: false, reason: JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND };
     }
 
     try {
-      // 실제 좌석 확인 로직 실행
       const result = await checkBusSeats({
         departureCd,
         arrivalCd,
@@ -67,18 +59,13 @@ const worker = new Worker<CheckSeatsJobData>(
         targetTimes,
       });
 
-      // 좌석을 찾았으면 성공으로 완료
       if (result.foundSeats) {
-        console.log(
-          `[Worker] ✓ 좌석 발견! (총 ${job.attemptsMade + 1}회 시도)`
-        );
+        log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Seats found!");
 
-        // 카카오톡 메시지 및 캘린더 이벤트 전송
         if (job.data.userId) {
           try {
             await sendKakaoMessage(job.data.userId, result);
 
-            // 캘린더 이벤트 생성
             const accessToken = await getKakaoAccessToken(job.data.userId);
             if (accessToken) {
               await createKakaoEvent(accessToken, {
@@ -88,13 +75,14 @@ const worker = new Worker<CheckSeatsJobData>(
               });
             }
           } catch (msgError) {
-            console.error("[Worker] 카카오 알림 전송 실패:", msgError);
+            log.error({ err: msgError, jobId: job.id }, "Kakao notification failed (job still completed)");
           }
         }
 
         await updateJobStatus(
           job.id as string,
           "completed",
+          job.data.userId,
           job.attemptsMade + 1,
           result
         );
@@ -103,15 +91,15 @@ const worker = new Worker<CheckSeatsJobData>(
 
       throw new Error("NO_SEATS_AVAILABLE");
     } catch (error) {
-      throw error; // 에러를 throw하면 BullMQ가 재시도 처리
+      throw error;
     }
   },
   {
     connection: getRedisConnection(),
-    concurrency: 5, // 동시에 처리할 수 있는 작업 수
+    concurrency: 5,
     limiter: {
-      max: 10, // 최대 10개 작업
-      duration: 1000, // 1초당
+      max: 10,
+      duration: 1000,
     },
   }
 );
@@ -122,24 +110,16 @@ function checkShouldContinue(
   targetDate: string,
   targetTimes: string[]
 ): boolean {
-  // 현재 KST 시간
-  const nowKST = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" })
-  );
+  const nowKST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
 
-  // 목표 날짜 파싱 (예: "11월" -> 11, "18" -> 18)
   const year = nowKST.getFullYear();
   const month = parseInt(targetMonth.replace("월", ""));
   const day = parseInt(targetDate);
 
-  // 마지막 조회 시간 찾기 (예: ["08:00", "09:30"] -> "09:30")
-  const lastTime = targetTimes.sort().reverse()[0]; // 가장 늦은 시간
+  const lastTime = [...targetTimes].sort().reverse()[0];
   const [hour, minute] = lastTime.split(":").map(Number);
 
-  // 목표 날짜+시간 생성
   const targetDateTime = new Date(year, month - 1, day, hour, minute);
-
-  // 현재 시간이 목표 시간보다 이전이면 계속 재시도
   return nowKST < targetDateTime;
 }
 
@@ -147,13 +127,13 @@ function checkShouldContinue(
 async function updateJobStatus(
   jobId: string,
   status: string,
+  userId?: string,
   retryCount?: number,
-  result?: any,
+  result?: unknown,
   error?: string,
   reason?: string
 ) {
   try {
-    // Prisma 타입을 활용한 업데이트 데이터 구성
     const updateData: Prisma.JobHistoryUpdateInput = {
       status,
       updatedAt: getKSTNow(),
@@ -175,11 +155,7 @@ async function updateJobStatus(
       updateData.reason = reason;
     }
 
-    if (
-      status === "completed" ||
-      status === "failed" ||
-      status === "cancelled"
-    ) {
+    if (status === "completed" || status === "failed" || status === "cancelled") {
       updateData.completedAt = getKSTNow();
     }
 
@@ -187,45 +163,38 @@ async function updateJobStatus(
       where: { jobId },
       data: updateData,
     });
+
+    if (userId) {
+      publishJobStatusUpdate({ jobId, userId, status }).catch(() => {});
+    }
   } catch (err) {
-    console.error(`[Worker] Failed to update job ${jobId} status in DB:`, err);
+    log.error({ err, jobId }, "Failed to update job status in DB");
   }
 }
 
 // 워커 이벤트 리스너
 worker.on("active", async (job: Job) => {
-  console.log(`[Worker] → Job ${job.id} 작업 시작 (active 상태로 전환)`);
-  // DB 상태를 active로 업데이트
-  await updateJobStatus(job.id as string, "active", job.attemptsMade);
+  log.info({ jobId: job.id, attempt: job.attemptsMade }, "Job active");
+  await updateJobStatus(job.id as string, "active", job.data.userId, job.attemptsMade);
 });
 
 worker.on("completed", async (job: Job) => {
-  console.log(
-    `[Worker] ✓ Job ${job.id} 최종 완료 (총 ${job.attemptsMade}회 시도)`
-  );
+  log.info({ jobId: job.id, attempt: job.attemptsMade }, "Job completed");
 });
 
 worker.on("failed", async (job: Job | undefined, err: Error) => {
   if (!job) return;
 
-  // NO_SEATS_AVAILABLE 에러는 재시도 중이므로 failed로 처리하지 않음
   if (err.message === "NO_SEATS_AVAILABLE") {
-    // DB 업데이트: waiting 상태로 유지
-    await updateJobStatus(
-      job.id as string,
-      "waiting",
-      job.attemptsMade,
-      undefined,
-      undefined
-    );
+    await updateJobStatus(job.id as string, "waiting", job.data.userId, job.attemptsMade);
     return;
   }
 
-  // 실제 에러인 경우에만 failed로 처리
-  console.error(`[Worker] ✗ Job ${job.id} 최종 실패:`, err.message);
+  log.error({ jobId: job.id, err: err.message }, "Job failed");
   await updateJobStatus(
     job.id as string,
     "failed",
+    job.data.userId,
     job.attemptsMade,
     undefined,
     err.message
@@ -233,26 +202,26 @@ worker.on("failed", async (job: Job | undefined, err: Error) => {
 });
 
 worker.on("error", (err: Error) => {
-  console.error("[Worker] Worker error:", err);
+  log.error({ err }, "Worker error");
 });
 
 worker.on("ready", () => {
-  console.log("[Worker] Worker is ready and waiting for jobs");
+  log.info("Worker is ready and waiting for jobs");
 });
 
 // 프로세스 종료 시 워커 정리
 process.on("SIGTERM", async () => {
-  console.log("[Worker] SIGTERM received, closing worker...");
+  log.info("SIGTERM received, closing worker...");
   await worker.close();
   await getRedisConnection().quit();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-  console.log("[Worker] SIGINT received, closing worker...");
+  log.info("SIGINT received, closing worker...");
   await worker.close();
   await getRedisConnection().quit();
   process.exit(0);
 });
 
-console.log("[Worker] Check seats worker started");
+log.info("Check seats worker started");

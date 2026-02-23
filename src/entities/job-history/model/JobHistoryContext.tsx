@@ -2,9 +2,10 @@
 
 import { createContext, useContext, ReactNode } from "react";
 import { useJobHistory } from "./useJobHistory";
+import type { JobHistoryItem } from "./types";
 
 interface JobHistoryContextType {
-  jobs: any[];
+  jobs: JobHistoryItem[];
   loading: boolean;
   error: string | null;
   refetch: () => void;

@@ -4,6 +4,7 @@ import Kakao from "next-auth/providers/kakao";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/shared/lib/prisma";
 import { getKSTNow } from "@/shared/lib/date";
+import { env } from "@/shared/lib/env";
 import type { Adapter } from "@auth/core/adapters";
 
 // 커스텀 어댑터
@@ -45,12 +46,12 @@ const adapter: Adapter = {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter,
-  secret: process.env.AUTH_SECRET,
+  secret: env.AUTH_SECRET,
   trustHost: true,
   providers: [
     Kakao({
-      clientId: process.env.KAKAO_REST_API_KEY,
-      clientSecret: process.env.KAKAO_CLIENT_SECRET_KEY,
+      clientId: env.KAKAO_REST_API_KEY,
+      clientSecret: env.KAKAO_CLIENT_SECRET_KEY,
       // 카카오톡 메시지 보내기 권한 요청
       authorization: {
         url: "https://kauth.kakao.com/oauth/authorize",

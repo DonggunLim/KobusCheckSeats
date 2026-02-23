@@ -1,4 +1,8 @@
 import prisma from "../prisma";
+import { env } from "../env";
+import { logger } from "../logger";
+
+const log = logger.child({ module: "kakao-token" });
 
 interface KakaoTokenResponse {
   access_token: string;
@@ -51,14 +55,14 @@ export async function refreshKakaoToken(
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: process.env.KAKAO_REST_API_KEY!,
-        client_secret: process.env.KAKAO_CLIENT_SECRET_KEY!,
+        client_id: env.KAKAO_REST_API_KEY,
+        client_secret: env.KAKAO_CLIENT_SECRET_KEY,
         refresh_token: refreshToken,
       }),
     });
 
     if (!response.ok) {
-      console.error("[Kakao Token] Refresh failed:", await response.text());
+      log.error({ body: await response.text() }, "Kakao token refresh failed");
       return null;
     }
 
@@ -79,7 +83,7 @@ export async function refreshKakaoToken(
 
     return data.access_token;
   } catch (error) {
-    console.error("[Kakao Token] Refresh error:", error);
+    log.error({ err: error }, "Kakao token refresh error");
     return null;
   }
 }
