@@ -9,6 +9,7 @@ import { CookieJar } from "tough-cookie";
 import * as cheerio from "cheerio";
 import { KOBUS } from "../constants/kobus";
 import { getTargetKST } from "../lib/date";
+import { buildRouteSearchParams } from "../lib/kobus-params";
 
 const envFile = process.env.NODE_ENV === "production" ? ".env" : ".env.local";
 config({ path: envFile });
@@ -61,24 +62,14 @@ export async function getRoutesSchedules() {
       const routeName = `${route.departureTerminal.terminalNm} → ${route.arrivalTerminal.terminalNm}`;
 
       try {
-        const pageParams = new URLSearchParams();
-        pageParams.append("deprCd", route.deprCd);
-        pageParams.append("deprNm", route.departureTerminal.terminalNm);
-        pageParams.append("arvlCd", route.arvlCd);
-        pageParams.append("arvlNm", route.arrivalTerminal.terminalNm);
-        pageParams.append("pathDvs", KOBUS.FORM.PATH_DVS);
-        pageParams.append("pathStep", KOBUS.FORM.PATH_STEP);
-        pageParams.append("crchDeprArvlYn", KOBUS.FORM.CRCH_DEPR_ARVL_YN);
-        pageParams.append("deprDtm", deprDt);
-        pageParams.append("deprDtmAll", deprDtAll);
-        pageParams.append("arvlDtm", deprDt);
-        pageParams.append("arvlDtmAll", deprDtAll);
-        pageParams.append("busClsCd", KOBUS.FORM.BUS_CLS_CD);
-        pageParams.append("prmmDcYn", KOBUS.FORM.PRMM_DC_YN);
-        pageParams.append("tfrCd", KOBUS.FORM.TFR_CD);
-        pageParams.append("tfrNm", KOBUS.FORM.TFR_NM);
-        pageParams.append("tfrArvlFullNm", KOBUS.FORM.TFR_ARVL_FULL_NM);
-        pageParams.append("abnrData", KOBUS.FORM.ABNR_DATA);
+        const pageParams = buildRouteSearchParams(
+          route.deprCd,
+          route.departureTerminal.terminalNm,
+          route.arvlCd,
+          route.arrivalTerminal.terminalNm,
+          deprDt,
+          deprDtAll
+        );
 
         const response = await client.post(KOBUS.URLS.ROUTE_INFO, pageParams, {
           headers: {

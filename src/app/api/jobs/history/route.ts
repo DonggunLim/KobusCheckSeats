@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import prisma from "@/shared/lib/prisma";
+import { auth } from "@/shared/lib/auth";
+import { parseSearchParams, limitSchema, statusSchema } from "@/shared/lib/api-validation";
+import { logger } from "@/shared/lib/logger";
+
+const log = logger.child({ route: "jobs/history" });
+
+const schema = z.object({ limit: limitSchema, status: statusSchema });
 
 /**
  * GET /api/jobs/history
- * 잡 히스토리 목록 조회 (최신순)
+ * 잡 히스토리 목록 조회 (최신순, 본인 잡만)
  */
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get("limit") || "20");
-    const status = searchParams.get("status"); // waiting, active, completed, failed
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = session.user.id;
 
-    // DB에서 잡 히스토리 조회
-    const whereClause = status ? { status } : {};
+    const parsed = parseSearchParams(schema, request.nextUrl.searchParams);
+    if (!parsed.success) return parsed.response;
+    const { limit, status } = parsed.data;
+
+    const whereClause = {
+      userId,
+      ...(status ? { status } : {}),
+    };
 
     const jobs = await prisma.jobHistory.findMany({
       where: whereClause,
@@ -27,7 +43,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // JSON 파싱 (터미널 이름은 이미 저장되어 있음)
     const parsedJobs = jobs.map((job) => ({
       ...job,
       targetTimes: JSON.parse(job.targetTimes),
@@ -40,10 +55,7 @@ export async function GET(request: NextRequest) {
       count: parsedJobs.length,
     });
   } catch (error) {
-    console.error("Failed to fetch job history:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch job history" },
-      { status: 500 }
-    );
+    log.error({ err: error }, "Failed to fetch job history");
+    return NextResponse.json({ success: false, error: "Failed to fetch job history" }, { status: 500 });
   }
 }

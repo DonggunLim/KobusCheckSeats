@@ -1,5 +1,9 @@
 import prisma from "../prisma";
 import { getKakaoAccessToken } from "./kakao-token";
+import { env } from "../env";
+import { logger } from "../logger";
+
+const log = logger.child({ module: "kakao-message" });
 
 interface SeatCheckResult {
   config: {
@@ -24,7 +28,7 @@ export async function sendKakaoMessage(
     const accessToken = await getKakaoAccessToken(userId);
 
     if (!accessToken) {
-      console.error("[Kakao Message] No access token available");
+      log.error({ userId }, "No access token available");
       return false;
     }
 
@@ -43,9 +47,9 @@ export async function sendKakaoMessage(
             object_type: "text",
             text: message,
             link: {
-              web_url: process.env.NEXTAUTH_URL || "http://localhost:3000",
+              web_url: env.NEXTAUTH_URL || "http://localhost:3000",
               mobile_web_url:
-                process.env.NEXTAUTH_URL || "http://localhost:3000",
+                env.NEXTAUTH_URL || "http://localhost:3000",
             },
           }),
         }),
@@ -54,14 +58,14 @@ export async function sendKakaoMessage(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[Kakao Message] Send failed:", errorText);
+      log.error({ status: response.status, errorText }, "Send failed");
       return false;
     }
 
-    console.log("[Kakao Message] Message sent successfully");
+    log.info({ userId }, "Message sent successfully");
     return true;
   } catch (error) {
-    console.error("[Kakao Message] Error:", error);
+    log.error({ err: error, userId }, "Error sending message");
     return false;
   }
 }

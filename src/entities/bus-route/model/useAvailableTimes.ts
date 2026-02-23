@@ -46,22 +46,35 @@ export function useAvailableTimes(
   };
 }
 
-function filterFutureTimes(times: string[], selectedDate: string): string[] {
-  // 선택한 날짜가 오늘인지 확인
-  const today = new Date();
-  const todayString = today.toISOString().split("T")[0]; // YYYY-MM-DD 형식
+function getKSTDateString(): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replace(/\. /g, "-")
+    .replace(/\./g, "");
+}
 
-  // 선택한 날짜가 오늘이 아니면 모든 시간 반환
-  if (selectedDate !== todayString) {
+function getKSTTimeMinutes(): number {
+  const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  return kstNow.getHours() * 60 + kstNow.getMinutes();
+}
+
+function filterFutureTimes(times: string[], selectedDate: string): string[] {
+  // 선택한 날짜가 오늘(KST)인지 확인
+  const todayKST = getKSTDateString();
+
+  if (selectedDate !== todayKST) {
     return times;
   }
 
-  // 오늘이면 현재 시간 이후의 시간들만 필터링
-  const currentTime = new Date();
+  // 오늘이면 현재 KST 시간 이후의 시간들만 필터링
+  const currentMinutes = getKSTTimeMinutes();
   return times.filter((time) => {
     const [hours, minutes] = time.split(":").map(Number);
-    const timeDate = new Date();
-    timeDate.setHours(hours, minutes, 0, 0);
-    return timeDate > currentTime;
+    return hours * 60 + minutes > currentMinutes;
   });
 }

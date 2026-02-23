@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { JobHistoryItem } from "./types";
 import { fetchJobHistory } from "../api";
 
@@ -8,6 +8,7 @@ export function useJobHistory(limit: number = 20) {
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sseConnected = useRef(false);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -22,18 +23,57 @@ export function useJobHistory(limit: number = 20) {
     }
   }, [limit]);
 
+  // Initial fetch
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
-  // 폴링으로 주기적 업데이트 (10초로 단축)
+  // SSE connection for real-time updates with 30s polling fallback
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      fetchJobs();
-    }, 10000); // 10초
+    let eventSource: EventSource | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling() {
+      if (pollInterval) return;
+      pollInterval = setInterval(() => {
+        fetchJobs();
+      }, 30_000);
+    }
+
+    function connectSSE() {
+      eventSource = new EventSource("/api/jobs/stream");
+
+      eventSource.onopen = () => {
+        sseConnected.current = true;
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      };
+
+      eventSource.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          if (event.type === "heartbeat" || event.type === "connected") return;
+          fetchJobs();
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      eventSource.onerror = () => {
+        sseConnected.current = false;
+        eventSource?.close();
+        eventSource = null;
+        startPolling();
+      };
+    }
+
+    connectSSE();
 
     return () => {
-      clearInterval(intervalId);
+      eventSource?.close();
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [fetchJobs]);
 
