@@ -114,9 +114,29 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = session.user.id;
+
     const parsed = parseSearchParams(jobIdSchema, request.nextUrl.searchParams);
     if (!parsed.success) return parsed.response;
     const { jobId } = parsed.data;
+
+    // 소유권 검증
+    const jobHistory = await prisma.jobHistory.findUnique({
+      where: { jobId },
+      select: { userId: true },
+    });
+
+    if (!jobHistory) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    if (jobHistory.userId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const queue = getCheckSeatsQueue();
     const job = await queue.getJob(jobId);

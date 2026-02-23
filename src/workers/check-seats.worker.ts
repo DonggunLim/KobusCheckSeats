@@ -50,50 +50,42 @@ const worker = new Worker<CheckSeatsJobData>(
       return { foundSeats: false, reason: JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND };
     }
 
-    try {
-      const result = await checkBusSeats({
-        departureCd,
-        arrivalCd,
-        targetMonth,
-        targetDate,
-        targetTimes,
-      });
+    const result = await checkBusSeats({
+      departureCd,
+      arrivalCd,
+      targetMonth,
+      targetDate,
+      targetTimes,
+    });
 
-      if (result.foundSeats) {
-        log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Seats found!");
+    if (result.foundSeats) {
+      log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Seats found!");
 
-        if (job.data.userId) {
-          try {
-            await sendKakaoMessage(job.data.userId, result);
+      if (job.data.userId) {
+        try {
+          await sendKakaoMessage(job.data.userId, result);
 
-            const accessToken = await getKakaoAccessToken(job.data.userId);
-            if (accessToken) {
-              await createKakaoEvent(accessToken, {
-                departureCd: result.config.departureCd,
-                arrivalCd: result.config.arrivalCd,
-                time: result.firstFoundTime,
-              });
-            }
-          } catch (msgError) {
-            log.error({ err: msgError, jobId: job.id }, "Kakao notification failed (job still completed)");
+          const accessToken = await getKakaoAccessToken(job.data.userId);
+          if (accessToken) {
+            await createKakaoEvent(accessToken, {
+              departureCd: result.config.departureCd,
+              arrivalCd: result.config.arrivalCd,
+              time: result.firstFoundTime,
+            });
           }
         } catch (msgError) {
           log.error({ err: msgError, jobId: job.id }, "Kakao notification failed (job still completed)");
         }
-
-        await updateJobStatus(
-          job.id as string,
-          "completed",
-          job.data.userId,
-          job.attemptsMade + 1,
-          result
-        );
-        return result;
       }
 
-      throw new Error("NO_SEATS_AVAILABLE");
-    } catch (error) {
-      throw error;
+      await updateJobStatus(
+        job.id as string,
+        "completed",
+        job.data.userId,
+        job.attemptsMade + 1,
+        result
+      );
+      return result;
     }
 
     throw new Error("NO_SEATS_AVAILABLE");
@@ -169,7 +161,9 @@ async function updateJobStatus(
     });
 
     if (userId) {
-      publishJobStatusUpdate({ jobId, userId, status }).catch(() => {});
+      publishJobStatusUpdate({ jobId, userId, status }).catch((err) => {
+        log.warn({ err, jobId }, "Failed to publish job status update");
+      });
     }
   } catch (err) {
     log.error({ err, jobId }, "Failed to update job status in DB");

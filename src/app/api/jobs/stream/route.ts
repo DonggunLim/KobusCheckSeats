@@ -5,6 +5,9 @@ import {
   createJobEventsSubscriber,
   type JobStatusEvent,
 } from "@/shared/lib/queue/job-events";
+import { logger } from "@/shared/lib/logger";
+
+const log = logger.child({ route: "jobs/stream" });
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +38,8 @@ export async function GET(request: NextRequest) {
 
       subscriber.subscribe(JOB_EVENTS_CHANNEL, (err) => {
         if (err) {
-          console.error("[SSE] Redis subscribe error:", err);
+          log.error({ err, userId }, "Redis subscribe error");
+          subscriber.quit();
           controller.close();
         }
       });
