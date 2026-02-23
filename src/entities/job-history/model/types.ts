@@ -14,7 +14,7 @@ export interface JobHistoryItem {
   targetTimes: string[];
   status: "waiting" | "active" | "completed" | "failed" | "cancelled";
   retryCount: number;
-  result: any | null;
+  result: Record<string, unknown> | null;
   error: string | null;
   reason: JobCancelReason | null;
   createdAt: string;

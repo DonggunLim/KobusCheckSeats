@@ -1,6 +1,9 @@
 import { Queue } from "bullmq";
 import { getRedisConnection } from "../redis";
+import { logger } from "../logger";
 import type { RouteQuery } from "../../types/bus-check.types";
+
+const log = logger.child({ module: "queue" });
 
 // Job 데이터 타입 정의 (Prisma JobHistory와 호환되는 형태)
 export interface CheckSeatsJobData extends RouteQuery {
@@ -34,7 +37,7 @@ export function getCheckSeatsQueue(): Queue<CheckSeatsJobData> {
 
     // 큐 이벤트 리스너
     checkSeatsQueue.on("error", (error) => {
-      console.error("Queue error:", error);
+      log.error({ err: error }, "Queue error");
     });
   }
 

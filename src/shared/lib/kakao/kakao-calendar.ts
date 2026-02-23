@@ -1,5 +1,8 @@
 import axios from "axios";
 import prisma from "../prisma";
+import { logger } from "../logger";
+
+const log = logger.child({ module: "kakao-calendar" });
 
 interface KakaoEventData {
   departureCd: string;
@@ -69,10 +72,10 @@ export async function createKakaoEvent(
       }
     );
 
-    console.log("[Kakao] 톡캘린더 일정 등록 성공");
+    log.info("톡캘린더 일정 등록 성공");
     return true;
   } catch (error) {
-    console.error("[Kakao] 일정 등록 실패:", error);
+    log.error({ err: error }, "일정 등록 실패");
     return false;
   }
 }
