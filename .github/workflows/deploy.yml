@@ -76,7 +76,9 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT }}
+          script_stop: true
           script: |
+            set -euo pipefail
             cd ${{ env.PROJECT_PATH_ON_SERVER }}
 
             # docker-compose.yml 다운로드
@@ -98,5 +100,5 @@ jobs:
             # 이미지 pull 및 컨테이너 재실행
             docker pull ${{ env.APP_IMAGE_NAME }}
             docker pull ${{ env.WORKER_IMAGE_NAME }}
-            docker compose -p kobus up -d --force-recreate --scale worker=2
+            docker compose -p kobuscheckseats up -d --force-recreate --scale worker=2
             docker system prune -f
