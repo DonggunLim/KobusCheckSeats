@@ -25,7 +25,8 @@ export function useAvailableTimes(
       try {
         const times = await fetchAvailableTimes(
           departureTerminalCd,
-          arrivalTerminalCd
+          arrivalTerminalCd,
+          selectedDate
         );
 
         setAvailableTimes(filterFutureTimes(times, selectedDate));

@@ -19,5 +19,9 @@ export interface TerminalData {
  * 사용 가능한 시간 조회 API 응답
  */
 export interface FetchAvailableTimesResponse {
+  success: boolean;
+  date: string;
+  source: "live" | "cache" | "db-fallback";
   times: string[];
+  count: number;
 }

@@ -95,6 +95,11 @@ export function getTargetKST(daysOffset: number): FormattedDate {
   return formatDateKST(date);
 }
 
+export function getKobusDateFromISODate(dateString: string): FormattedDate {
+  const date = new Date(`${dateString}T00:00:00+09:00`);
+  return formatDateKST(date);
+}
+
 /**
  * 특정 월/일을 KST로 포맷팅
  * @param targetMonth 월 문자열 (예: "11월")
@@ -119,9 +124,7 @@ export function getTargetDateKST(
  */
 export function getLastMondayUpdate(): string {
   const now = new Date();
-  const kstNow = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })
-  );
+  const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
 
   const dayOfWeek = kstNow.getDay(); // 0(일) ~ 6(토)
   const currentHour = kstNow.getHours();

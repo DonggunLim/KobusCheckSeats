@@ -25,9 +25,7 @@ export async function fetchTerminals(areaCd: string): Promise<TerminalData[]> {
 /**
  * Fetch destinations reachable from a departure terminal
  */
-export async function fetchDestinations(
-  deprCd: string
-): Promise<TerminalData[]> {
+export async function fetchDestinations(deprCd: string): Promise<TerminalData[]> {
   const response = await fetch(`/api/destinations?deprCd=${deprCd}`);
   if (!response.ok) {
     throw new Error("Failed to fetch destinations");
@@ -40,11 +38,11 @@ export async function fetchDestinations(
  */
 export async function fetchAvailableTimes(
   departure: string,
-  arrival: string
+  arrival: string,
+  date: string
 ): Promise<string[]> {
-  const response = await fetch(
-    `/api/schedules/times?departure=${departure}&arrival=${arrival}`
-  );
+  const params = new URLSearchParams({ departure, arrival, date });
+  const response = await fetch(`/api/schedules/times?${params.toString()}`);
   if (!response.ok) {
     throw new Error("Failed to fetch available times");
   }
