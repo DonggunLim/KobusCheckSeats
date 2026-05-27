@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getCheckSeatsQueue, type CheckSeatsJobData } from "@/shared/lib/queue/queue";
 import prisma from "@/shared/lib/prisma";
-import { getKSTNow } from "@/shared/lib/date";
-import { auth } from "@/shared/lib/auth";
+import { getKSTNow, getTargetDateTimeKST } from "@/shared/lib/date";
 import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
 import { parseBody, parseSearchParams, queueJobSchema } from "@/shared/lib/api-validation";
 import { rateLimitJobSubmit } from "@/shared/lib/rate-limiter";
@@ -15,61 +15,38 @@ const jobIdSchema = z.object({ jobId: z.string().min(1) });
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = session.user.id;
-
     // Rate limiting
     const ip =
       request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? undefined;
-    const limited = await rateLimitJobSubmit(userId, ip);
+    const limited = await rateLimitJobSubmit(ip);
     if (limited) return limited;
 
     const body = await request.json();
     const parsed = parseBody(queueJobSchema, body);
     if (!parsed.success) return parsed.response;
 
-    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes, scheduleId } =
+    const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes, scheduleId } =
       parsed.data;
 
     // 목표 시간까지 필요한 attempts 계산
-    const nowKST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-    const year = nowKST.getFullYear();
-    const month = parseInt(targetMonth.replace("월", ""));
-    const day = parseInt(targetDate);
-
     const lastTime = [...targetTimes].sort().reverse()[0];
-    const [hour, minute] = lastTime.split(":").map(Number);
-    const targetDateTime = new Date(year, month - 1, day, hour, minute);
+    const targetDateTime = getTargetDateTimeKST(targetYear, targetMonth, targetDate, lastTime);
 
-    const remainingTime = targetDateTime.getTime() - nowKST.getTime();
+    const remainingTime = targetDateTime.getTime() - Date.now();
     const retryInterval = 3 * 60 * 1000; // 3분
     const maxAttempts = Math.max(1, Math.ceil(remainingTime / retryInterval));
 
     const jobData: CheckSeatsJobData = {
       departureCd,
       arrivalCd,
+      targetYear,
       targetMonth,
       targetDate,
       targetTimes,
       scheduleId,
-      userId,
     };
 
     const queue = getCheckSeatsQueue();
-    const job = await queue.add("check-seats-job", jobData, {
-      priority: parsed.data.priority ?? 1,
-      delay: parsed.data.delay ?? 0,
-      removeOnComplete: true,
-      removeOnFail: false,
-      attempts: maxAttempts,
-      backoff: {
-        type: "fixed",
-        delay: retryInterval,
-      },
-    });
 
     // 터미널 이름 조회 (코드 → 이름)
     const terminals = await prisma.terminal.findMany({
@@ -80,30 +57,53 @@ export async function POST(request: NextRequest) {
     const terminalMap = new Map(terminals.map((t) => [t.terminalCd, t.terminalNm]));
     const departureName = terminalMap.get(departureCd) || departureCd;
     const arrivalName = terminalMap.get(arrivalCd) || arrivalCd;
+    const jobId = randomUUID();
 
+    await prisma.jobHistory.create({
+      data: {
+        jobId,
+        departure: departureName,
+        arrival: arrivalName,
+        targetMonth,
+        targetDate,
+        targetTimes: JSON.stringify(targetTimes),
+        status: "waiting",
+        retryCount: 0,
+        createdAt: getKSTNow(),
+        updatedAt: getKSTNow(),
+      },
+    });
+
+    let queuedJobId: string = jobId;
     try {
-      await prisma.jobHistory.create({
-        data: {
-          jobId: job.id as string,
-          departure: departureName,
-          arrival: arrivalName,
-          targetMonth,
-          targetDate,
-          targetTimes: JSON.stringify(targetTimes),
-          status: "waiting",
-          retryCount: 0,
-          userId,
-          createdAt: getKSTNow(),
-          updatedAt: getKSTNow(),
+      const job = await queue.add("check-seats-job", jobData, {
+        jobId,
+        priority: parsed.data.priority ?? 1,
+        delay: parsed.data.delay ?? 0,
+        removeOnComplete: true,
+        removeOnFail: false,
+        attempts: maxAttempts,
+        backoff: {
+          type: "fixed",
+          delay: retryInterval,
         },
       });
-    } catch (dbError) {
-      log.error({ err: dbError }, "Failed to save job history to DB");
+      queuedJobId = job.id ?? jobId;
+    } catch (queueError) {
+      await prisma.jobHistory
+        .delete({ where: { jobId } })
+        .catch((cleanupError) =>
+          log.error(
+            { err: cleanupError, jobId },
+            "Failed to clean up job history after queue error"
+          )
+        );
+      throw queueError;
     }
 
     return NextResponse.json({
       success: true,
-      jobId: job.id,
+      jobId: queuedJobId,
       message: "Job added to queue successfully",
     });
   } catch (error) {
@@ -114,28 +114,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = session.user.id;
-
     const parsed = parseSearchParams(jobIdSchema, request.nextUrl.searchParams);
     if (!parsed.success) return parsed.response;
     const { jobId } = parsed.data;
 
-    // 소유권 검증
     const jobHistory = await prisma.jobHistory.findUnique({
       where: { jobId },
-      select: { userId: true },
+      select: { jobId: true },
     });
 
     if (!jobHistory) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    if (jobHistory.userId !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const queue = getCheckSeatsQueue();
@@ -166,28 +155,17 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const userId = session.user.id;
-
     const parsed = parseSearchParams(jobIdSchema, request.nextUrl.searchParams);
     if (!parsed.success) return parsed.response;
     const { jobId } = parsed.data;
 
-    // 소유권 검증
     const jobHistory = await prisma.jobHistory.findUnique({
       where: { jobId },
-      select: { userId: true },
+      select: { jobId: true },
     });
 
     if (!jobHistory) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
-
-    if (jobHistory.userId !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // DB 상태를 먼저 업데이트 (race condition 방지)

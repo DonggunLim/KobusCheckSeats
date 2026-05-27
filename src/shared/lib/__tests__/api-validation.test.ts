@@ -5,6 +5,7 @@ describe("queueJobSchema", () => {
   const validJob = {
     departureCd: "010",
     arrivalCd: "300",
+    targetYear: 2026,
     targetMonth: "11월",
     targetDate: "18",
     targetTimes: ["09:00", "12:30"],
@@ -17,6 +18,11 @@ describe("queueJobSchema", () => {
 
   it("rejects invalid targetMonth format", () => {
     const result = queueJobSchema.safeParse({ ...validJob, targetMonth: "November" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid targetYear", () => {
+    const result = queueJobSchema.safeParse({ ...validJob, targetYear: 1999 });
     expect(result.success).toBe(false);
   });
 
@@ -33,6 +39,14 @@ describe("queueJobSchema", () => {
   it("rejects missing required fields", () => {
     const result = queueJobSchema.safeParse({ departureCd: "010" });
     expect(result.success).toBe(false);
+  });
+
+  it("strips client-supplied userId because jobs are no longer login-scoped", () => {
+    const result = queueJobSchema.safeParse({ ...validJob, userId: "user-1" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect("userId" in result.data).toBe(false);
+    }
   });
 });
 

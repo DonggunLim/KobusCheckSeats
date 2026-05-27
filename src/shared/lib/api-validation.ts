@@ -44,13 +44,13 @@ export const statusSchema = z
 export const queueJobSchema = z.object({
   departureCd: terminalCdSchema,
   arrivalCd: terminalCdSchema,
+  targetYear: z.number().int().min(2000).max(2100).optional(),
   targetMonth: z.string().regex(/^\d{1,2}월$/, "targetMonth must be like '11월'"),
   targetDate: z.string().regex(/^\d{1,2}$/, "targetDate must be a day number"),
   targetTimes: z
     .array(z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:MM format"))
     .min(1, "targetTimes must have at least one entry"),
   scheduleId: z.string().optional(),
-  userId: z.string().optional(),
   priority: z.number().optional(),
   delay: z.number().optional(),
 });

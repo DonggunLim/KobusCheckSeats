@@ -15,7 +15,7 @@ const log = logger.child({ module: "check-bus-seats" });
  * axios + cheerio를 사용하여 코버스 사이트에서 버스 좌석을 확인합니다.
  */
 export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
-  const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes } = config;
+  const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes } = config;
   const startTime = Date.now();
 
   const jar = new CookieJar();
@@ -33,7 +33,7 @@ export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
       },
     });
 
-    const { ymd, formatted } = getTargetDateKST(targetMonth, targetDate);
+    const { ymd, formatted } = getTargetDateKST(targetMonth, targetDate, targetYear);
     const terminalNames = await getTerminalNames(departureCd, arrivalCd);
 
     const pageParams = buildRouteSearchParams(

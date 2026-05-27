@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchAvailableTimes } from "../api";
+import { getKSTDateString } from "@/shared/lib/date";
 
 export function useAvailableTimes(
   departureTerminalCd: string,
@@ -44,18 +45,6 @@ export function useAvailableTimes(
     loading,
     error,
   };
-}
-
-function getKSTDateString(): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(new Date())
-    .replace(/\. /g, "-")
-    .replace(/\./g, "");
 }
 
 function getKSTTimeMinutes(): number {

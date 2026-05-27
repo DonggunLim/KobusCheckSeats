@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useSession } from "next-auth/react";
 import axios from "axios";
 import type { JobHistoryItem } from "../model/types";
 import { JOB_CANCEL_REASON_LABEL } from "@/shared/constants/job";
@@ -34,17 +33,11 @@ const STATUS_CONFIG = {
   },
 };
 
-export function JobHistoryItemCard({
-  job,
-  onJobCancelled,
-}: JobHistoryItemCardProps) {
-  const { data: session } = useSession();
+export function JobHistoryItemCard({ job, onJobCancelled }: JobHistoryItemCardProps) {
   const [isCancelling, setIsCancelling] = useState(false);
   const status = STATUS_CONFIG[job.status];
 
-  const isOwner = !job.userId || job.userId === session?.user?.id;
-  const canCancel =
-    (job.status === "waiting" || job.status === "active") && isOwner;
+  const canCancel = job.status === "waiting" || job.status === "active";
 
   const handleCancel = async () => {
     if (!confirm("정말 이 작업을 취소하시겠습니까?")) {
@@ -76,9 +69,7 @@ export function JobHistoryItemCard({
               {job.departure} → {job.arrival}
             </h3>
             {job.user?.name && (
-              <span className="text-xs text-text-secondary">
-                ({job.user.name} 님)
-              </span>
+              <span className="text-xs text-text-secondary">({job.user.name} 님)</span>
             )}
           </div>
 
@@ -138,22 +129,16 @@ export function JobHistoryItemCard({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-text-secondary min-w-10">상태</span>
-            <span className={`font-medium ${status.color}`}>
-              {status.label}
-            </span>
+            <span className={`font-medium ${status.color}`}>{status.label}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-text-secondary">등록</span>
-            <span className="text-text-primary">
-              {job.createdAt.split("T")[0]}
-            </span>
+            <span className="text-text-primary">{job.createdAt.split("T")[0]}</span>
           </div>
           {job.retryCount > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-text-secondary">조회</span>
-              <span className="text-orange-accent font-medium">
-                {job.retryCount}회
-              </span>
+              <span className="text-orange-accent font-medium">{job.retryCount}회</span>
             </div>
           )}
         </div>

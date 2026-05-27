@@ -7,7 +7,7 @@ export function JobHistoryList() {
   const { jobs, loading, error, refetch } = useJobHistoryContext();
 
   return (
-    <ul className="rounded-xl">
+    <section className="rounded-xl">
       <div className="p-6">
         <h2 className="text-xl font-semibold text-text-primary">
           조회 히스토리
@@ -34,7 +34,7 @@ export function JobHistoryList() {
       )}
 
       {jobs.length > 0 && (
-        <div className="max-h-[600px] overflow-y-auto">
+        <ul className="max-h-[600px] overflow-y-auto">
           {jobs.map((job) => (
             <JobHistoryItemCard
               key={job.id}
@@ -42,8 +42,8 @@ export function JobHistoryList() {
               onJobCancelled={refetch}
             />
           ))}
-        </div>
+        </ul>
       )}
-    </ul>
+    </section>
   );
 }

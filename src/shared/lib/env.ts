@@ -2,15 +2,19 @@ import { z } from "zod";
 
 const serverEnvSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  REDIS_HOST: z.string().default("localhost"),
-  REDIS_PORT: z.string().default("6379"),
-  AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
-  KAKAO_REST_API_KEY: z.string().min(1, "KAKAO_REST_API_KEY is required"),
-  KAKAO_CLIENT_SECRET_KEY: z.string().min(1, "KAKAO_CLIENT_SECRET_KEY is required"),
-  NEXTAUTH_URL: z.string().url().optional(),
-  AUTH_URL: z.string().url().optional(),
-  AUTH_TRUST_HOST: z.string().optional(),
+  REDIS_HOST: z.string().min(1).default("localhost"),
+  REDIS_PORT: z.string().regex(/^\d+$/, "REDIS_PORT must be a number").default("6379"),
+  APP_URL: z.string().url().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
+  TELEGRAM_CHAT_ID: z.string().min(1, "TELEGRAM_CHAT_ID is required"),
+  TELEGRAM_REQUESTER_LABEL: z.string().min(1).default("동건님 요청건"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+});
+
+const buildEnvSchema = serverEnvSchema.extend({
+  DATABASE_URL: z.string().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 function validateEnv() {
@@ -24,7 +28,7 @@ function validateEnv() {
       console.warn(
         "⚠️  Some environment variables are missing, but skipping validation (CI/Build context)."
       );
-      return process.env as unknown as z.infer<typeof serverEnvSchema>;
+      return buildEnvSchema.parse(process.env) as z.infer<typeof serverEnvSchema>;
     }
 
     const errors = parsed.error.flatten().fieldErrors;

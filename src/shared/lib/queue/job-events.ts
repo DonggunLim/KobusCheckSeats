@@ -5,7 +5,6 @@ export const JOB_EVENTS_CHANNEL = "job-status-updates";
 
 export interface JobStatusEvent {
   jobId: string;
-  userId: string;
   status: string;
 }
 

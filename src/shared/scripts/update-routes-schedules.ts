@@ -30,7 +30,7 @@ interface ScheduleData {
 /**
  * 모든 활성 노선의 시간표 크롤링
  */
-export async function getRoutesSchedules() {
+export async function getRoutesSchedules(options: { disconnect?: boolean } = {}) {
   console.log("[CRAWL] 시간표 크롤링 시작");
 
   try {
@@ -170,7 +170,16 @@ export async function getRoutesSchedules() {
     );
   } catch (error) {
     console.error("[CRAWL] 크롤링 실패:", error);
+    throw error;
   } finally {
-    await prisma.$disconnect();
+    if (options.disconnect) {
+      await prisma.$disconnect();
+    }
   }
+}
+
+if (process.argv[1]?.endsWith("update-routes-schedules.ts")) {
+  getRoutesSchedules({ disconnect: true }).catch(() => {
+    process.exitCode = 1;
+  });
 }

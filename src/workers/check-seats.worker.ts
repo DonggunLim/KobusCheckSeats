@@ -4,10 +4,8 @@ import { type CheckSeatsJobData } from "../shared/lib/queue/queue";
 import { checkBusSeats } from "./jobs/check-bus-seats";
 import prisma from "../shared/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { getKSTNow } from "../shared/lib/date";
-import { createKakaoEvent } from "../shared/lib/kakao/kakao-calendar";
-import { sendKakaoMessage } from "@/shared/lib/kakao/kakao-message";
-import { getKakaoAccessToken } from "@/shared/lib/kakao/kakao-token";
+import { getKSTNow, getTargetDateTimeKST } from "../shared/lib/date";
+import { sendTelegramMessage } from "@/shared/lib/telegram/telegram-message";
 import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
 import { publishJobStatusUpdate } from "@/shared/lib/queue/job-events";
 import { logger } from "@/shared/lib/logger";
@@ -20,7 +18,7 @@ const worker = new Worker<CheckSeatsJobData>(
   async (job: Job<CheckSeatsJobData>) => {
     log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Processing job");
 
-    const { departureCd, arrivalCd, targetMonth, targetDate, targetTimes } = job.data;
+    const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes } = job.data;
 
     // DB에서 취소 여부 먼저 체크
     const jobHistory = await prisma.jobHistory.findUnique({
@@ -34,14 +32,13 @@ const worker = new Worker<CheckSeatsJobData>(
     }
 
     // 목표 날짜/시간이 지났는지 체크
-    const shouldContinue = checkShouldContinue(targetMonth, targetDate, targetTimes);
+    const shouldContinue = checkShouldContinue(targetYear, targetMonth, targetDate, targetTimes);
 
     if (!shouldContinue) {
       log.info({ jobId: job.id }, "Target time passed, cancelling job");
       await updateJobStatus(
         job.id as string,
         "cancelled",
-        job.data.userId,
         job.attemptsMade,
         { foundSeats: false },
         undefined,
@@ -53,38 +50,32 @@ const worker = new Worker<CheckSeatsJobData>(
     const result = await checkBusSeats({
       departureCd,
       arrivalCd,
+      targetYear,
       targetMonth,
       targetDate,
       targetTimes,
     });
 
+    if (!result.success) {
+      throw new Error(result.error || "SEAT_CHECK_FAILED");
+    }
+
     if (result.foundSeats) {
       log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Seats found!");
 
-      if (job.data.userId) {
-        try {
-          await sendKakaoMessage(job.data.userId, result);
-
-          const accessToken = await getKakaoAccessToken(job.data.userId);
-          if (accessToken) {
-            await createKakaoEvent(accessToken, {
-              departureCd: result.config.departureCd,
-              arrivalCd: result.config.arrivalCd,
-              time: result.firstFoundTime,
-            });
-          }
-        } catch (msgError) {
-          log.error({ err: msgError, jobId: job.id }, "Kakao notification failed (job still completed)");
+      try {
+        const notified = await sendTelegramMessage(result);
+        if (!notified) {
+          log.warn({ jobId: job.id }, "Telegram notification failed (job still completed)");
         }
+      } catch (msgError) {
+        log.error(
+          { err: msgError, jobId: job.id },
+          "Telegram notification failed (job still completed)"
+        );
       }
 
-      await updateJobStatus(
-        job.id as string,
-        "completed",
-        job.data.userId,
-        job.attemptsMade + 1,
-        result
-      );
+      await updateJobStatus(job.id as string, "completed", job.attemptsMade + 1, result);
       return result;
     }
 
@@ -102,28 +93,25 @@ const worker = new Worker<CheckSeatsJobData>(
 
 // 목표 날짜/시간이 지났는지 확인 (KST 기준)
 function checkShouldContinue(
+  targetYear: number | undefined,
   targetMonth: string,
   targetDate: string,
   targetTimes: string[]
 ): boolean {
-  const nowKST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-
-  const year = nowKST.getFullYear();
-  const month = parseInt(targetMonth.replace("월", ""));
-  const day = parseInt(targetDate);
-
   const lastTime = [...targetTimes].sort().reverse()[0];
-  const [hour, minute] = lastTime.split(":").map(Number);
+  const targetDateTime = getTargetDateTimeKST(targetYear, targetMonth, targetDate, lastTime);
+  return Date.now() < targetDateTime.getTime();
+}
 
-  const targetDateTime = new Date(year, month - 1, day, hour, minute);
-  return nowKST < targetDateTime;
+function hasAttemptsRemaining(job: Job<CheckSeatsJobData>): boolean {
+  const maxAttempts = job.opts.attempts ?? 1;
+  return job.attemptsMade < maxAttempts;
 }
 
 // DB 상태 업데이트 헬퍼 함수 (Prisma 타입 기반)
 async function updateJobStatus(
   jobId: string,
   status: string,
-  userId?: string,
   retryCount?: number,
   result?: unknown,
   error?: string,
@@ -160,43 +148,52 @@ async function updateJobStatus(
       data: updateData,
     });
 
-    if (userId) {
-      publishJobStatusUpdate({ jobId, userId, status }).catch((err) => {
-        log.warn({ err, jobId }, "Failed to publish job status update");
-      });
-    }
+    publishJobStatusUpdate({ jobId, status }).catch((err) => {
+      log.warn({ err, jobId }, "Failed to publish job status update");
+    });
   } catch (err) {
     log.error({ err, jobId }, "Failed to update job status in DB");
   }
 }
 
 // 워커 이벤트 리스너
-worker.on("active", async (job: Job) => {
+worker.on("active", async (job: Job<CheckSeatsJobData>) => {
   log.info({ jobId: job.id, attempt: job.attemptsMade }, "Job active");
-  await updateJobStatus(job.id as string, "active", job.data.userId, job.attemptsMade);
+  await updateJobStatus(job.id as string, "active", job.attemptsMade);
 });
 
-worker.on("completed", async (job: Job) => {
+worker.on("completed", async (job: Job<CheckSeatsJobData>) => {
   log.info({ jobId: job.id, attempt: job.attemptsMade }, "Job completed");
 });
 
-worker.on("failed", async (job: Job | undefined, err: Error) => {
+worker.on("failed", async (job: Job<CheckSeatsJobData> | undefined, err: Error) => {
   if (!job) return;
 
   if (err.message === "NO_SEATS_AVAILABLE") {
-    await updateJobStatus(job.id as string, "waiting", job.data.userId, job.attemptsMade);
+    if (hasAttemptsRemaining(job)) {
+      await updateJobStatus(job.id as string, "waiting", job.attemptsMade);
+      return;
+    }
+
+    await updateJobStatus(
+      job.id as string,
+      "cancelled",
+      job.attemptsMade,
+      { foundSeats: false },
+      undefined,
+      JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND
+    );
+    return;
+  }
+
+  if (hasAttemptsRemaining(job)) {
+    log.warn({ jobId: job.id, err: err.message }, "Job attempt failed, will retry");
+    await updateJobStatus(job.id as string, "waiting", job.attemptsMade, undefined, err.message);
     return;
   }
 
   log.error({ jobId: job.id, err: err.message }, "Job failed");
-  await updateJobStatus(
-    job.id as string,
-    "failed",
-    job.data.userId,
-    job.attemptsMade,
-    undefined,
-    err.message
-  );
+  await updateJobStatus(job.id as string, "failed", job.attemptsMade, undefined, err.message);
 });
 
 worker.on("error", (err: Error) => {

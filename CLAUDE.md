@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Korean express bus (Kobus) seat availability checker. Users submit monitoring jobs; background workers periodically scrape the Kobus website (via Cheerio/Axios) and notify when seats become available. Auth is via Kakao OAuth (NextAuth v5).
+Korean express bus (Kobus) seat availability checker. Users submit monitoring jobs; background workers periodically scrape the Kobus website (via Cheerio/Axios) and notify a dedicated Telegram group when seats become available. The app does not require login.
 
 ## Commands
 
@@ -36,9 +36,9 @@ npm run start
 src/
 ├── app/          # Next.js App Router pages + API routes
 ├── entities/     # Domain models: bus-route, job-history (api/model/ui per entity)
-├── features/     # User-facing features: check-bus-seats, signin-kakao
+├── features/     # User-facing features: check-bus-seats
 ├── widgets/      # Composite components: search-panel
-├── shared/       # Cross-cutting: auth, db (Prisma), queue (BullMQ), utils, UI
+├── shared/       # Cross-cutting: db (Prisma), queue (BullMQ), Telegram, utils, UI
 └── workers/      # BullMQ worker processes (run separately from Next.js)
 ```
 
@@ -59,19 +59,18 @@ In Docker Compose, these are separate services sharing the same network. Workers
 
 ### API Routes
 
-- `/api/auth/[...nextauth]` — Kakao OAuth (NextAuth v5)
 - `/api/terminals` — Bus terminals list
 - `/api/areas` — Area codes
 - `/api/destinations` — Destination lookup
 - `/api/schedules/times` — Available departure times for a route
 - `/api/queue/job` — Submit a seat monitoring job
-- `/api/jobs/history` — User's job history
+- `/api/jobs/history` — Job history
 
 ### Infrastructure
 
 - **Database:** MySQL 8.0 via Prisma ORM
 - **Queue:** BullMQ backed by Redis
-- **Auth:** NextAuth v5 beta with Prisma adapter
+- **Notifications:** Telegram Bot API group messages
 - **Styling:** Tailwind CSS v4
 - **Path alias:** `@/*` → `./src/*`
 

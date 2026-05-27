@@ -55,7 +55,7 @@ function collectTerminals(data: any): Map<string, any> {
 /**
  * 메인 업데이트 함수
  */
-export async function getMasterData() {
+export async function getMasterData(options: { disconnect?: boolean } = {}) {
   console.log("[SYNC] 마스터 데이터 동기화 시작");
 
   try {
@@ -145,7 +145,16 @@ export async function getMasterData() {
     console.log("[SYNC] 마스터 데이터 동기화 완료");
   } catch (error) {
     console.error("[SYNC] 동기화 실패:", error);
+    throw error;
   } finally {
-    await prisma.$disconnect();
+    if (options.disconnect) {
+      await prisma.$disconnect();
+    }
   }
+}
+
+if (process.argv[1]?.endsWith("update-master-data.ts")) {
+  getMasterData({ disconnect: true }).catch(() => {
+    process.exitCode = 1;
+  });
 }

@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/shared/lib/auth";
 import {
   JOB_EVENTS_CHANNEL,
   createJobEventsSubscriber,
@@ -14,15 +13,9 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/jobs/stream
  * Server-Sent Events endpoint for real-time job status updates.
- * Each user receives only their own job events.
+ * Sends all job events because this app no longer requires login.
  */
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  const userId = session.user.id;
-
   const subscriber = createJobEventsSubscriber();
 
   const stream = new ReadableStream({
@@ -38,7 +31,7 @@ export async function GET(request: NextRequest) {
 
       subscriber.subscribe(JOB_EVENTS_CHANNEL, (err) => {
         if (err) {
-          log.error({ err, userId }, "Redis subscribe error");
+          log.error({ err }, "Redis subscribe error");
           subscriber.quit();
           controller.close();
         }
@@ -47,9 +40,7 @@ export async function GET(request: NextRequest) {
       subscriber.on("message", (_channel: string, message: string) => {
         try {
           const event: JobStatusEvent = JSON.parse(message);
-          if (event.userId === userId) {
-            send(JSON.stringify(event));
-          }
+          send(JSON.stringify(event));
         } catch {
           // ignore malformed messages
         }

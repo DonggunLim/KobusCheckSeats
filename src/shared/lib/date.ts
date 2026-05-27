@@ -18,7 +18,7 @@ export function getKSTNow(): Date {
  * Get today's date in ISO format
  */
 export function getTodayDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return getKSTDateString();
 }
 
 // ============================================================
@@ -28,6 +28,34 @@ export function getTodayDate(): string {
 export interface FormattedDate {
   ymd: string; // YYYYMMDD 형식
   formatted: string; // "YYYY. MM. DD. (요일)" 형식
+}
+
+export function getKSTDateString(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function getCurrentKSTYear(): number {
+  return Number(getKSTDateString().slice(0, 4));
+}
+
+export function getTargetDateTimeKST(
+  targetYear: number | undefined,
+  targetMonth: string,
+  targetDate: string,
+  time: string
+): Date {
+  const year = targetYear ?? getCurrentKSTYear();
+  const month = String(parseInt(targetMonth.replace("월", ""), 10)).padStart(2, "0");
+  const day = String(parseInt(targetDate, 10)).padStart(2, "0");
+  return new Date(`${year}-${month}-${day}T${time}:00+09:00`);
 }
 
 /**
@@ -62,8 +90,8 @@ function formatDateKST(date: Date): FormattedDate {
  * @param daysOffset 오늘로부터의 일수 (양수: 미래, 음수: 과거)
  */
 export function getTargetKST(daysOffset: number): FormattedDate {
-  const date = new Date();
-  date.setDate(date.getDate() + daysOffset);
+  const todayKST = new Date(`${getKSTDateString()}T00:00:00+09:00`);
+  const date = new Date(todayKST.getTime() + daysOffset * 24 * 60 * 60 * 1000);
   return formatDateKST(date);
 }
 
@@ -74,14 +102,14 @@ export function getTargetKST(daysOffset: number): FormattedDate {
  */
 export function getTargetDateKST(
   targetMonth: string,
-  targetDate: string
+  targetDate: string,
+  targetYear?: number
 ): FormattedDate {
-  const now = new Date();
-  const year = now.getFullYear();
+  const year = targetYear ?? getCurrentKSTYear();
   const month = parseInt(targetMonth.replace("월", ""));
   const day = parseInt(targetDate);
 
-  const targetDateObj = new Date(year, month - 1, day);
+  const targetDateObj = new Date(Date.UTC(year, month - 1, day));
   return formatDateKST(targetDateObj);
 }
 

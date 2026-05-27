@@ -43,10 +43,10 @@ export async function rateLimit(
 }
 
 /**
- * Convenience: rate limit by userId or IP for the job queue endpoint.
- * 5 requests per minute per user.
+ * Convenience: rate limit by IP for the job queue endpoint.
+ * 5 requests per minute per client.
  */
-export async function rateLimitJobSubmit(userId: string | undefined, ip: string | undefined) {
-  const key = userId ? `user:${userId}` : `ip:${ip ?? "unknown"}`;
+export async function rateLimitJobSubmit(ip: string | undefined) {
+  const key = `ip:${ip ?? "unknown"}`;
   return rateLimit(key, { windowMs: 60_000, max: 5 });
 }

@@ -10,7 +10,6 @@ export interface CheckSeatsJobData extends RouteQuery {
   scheduleId?: string; // 스케줄 ID (선택)
   retryCount?: number; // 재시도 횟수 추적
   startTime?: number; // 잡 시작 시간 (타임아웃 체크용)
-  userId?: string; // 사용자 ID (메시지 전송용)
 }
 
 let checkSeatsQueue: Queue<CheckSeatsJobData> | null = null;

@@ -16,10 +16,11 @@ export function useCheckSeats() {
 
       setIsChecking(true);
       try {
-        const [_year, month, day] = formData.date.split("-");
+        const [year, month, day] = formData.date.split("-");
         const apiPayload = {
           departureCd: formData.departureTerminalCd,
           arrivalCd: formData.arrivalTerminalCd,
+          targetYear: Number(year),
           targetMonth: `${parseInt(month)}월`,
           targetDate: day,
           targetTimes: formData.selectedTimes,
