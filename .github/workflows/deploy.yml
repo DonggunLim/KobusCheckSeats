@@ -84,15 +84,8 @@ jobs:
             # docker-compose.yml 다운로드
             curl -L -o docker-compose.yml https://raw.githubusercontent.com/DonggunLim/kobusCheckSeats/main/docker-compose.prod.yml
 
-            # .env 파일 생성
-            echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" > .env
-            echo "REDIS_PORT=${{ secrets.REDIS_PORT }}" >> .env
-            echo "GITHUB_TOKEN=${{ secrets.APP_GITHUB_TOKEN }}" >> .env
-            echo "GITHUB_REPOSITORY=${{ secrets.APP_GITHUB_REPOSITORY }}" >> .env
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
-            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
-            echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
-            echo "TELEGRAM_REQUESTER_LABEL=${{ secrets.TELEGRAM_REQUESTER_LABEL }}" >> .env
+            # Preserve the production credentials already provisioned on the host.
+            test -s .env
 
             # GHCR 로그인
             echo "${{ secrets.APP_GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -100,5 +93,4 @@ jobs:
             # 이미지 pull 및 컨테이너 재실행
             docker pull ${{ env.APP_IMAGE_NAME }}
             docker pull ${{ env.WORKER_IMAGE_NAME }}
-            docker compose -p kobuscheckseats up -d --force-recreate --scale worker=2
-            docker system prune -f
+            docker compose -p kobuscheckseats up -d --force-recreate --scale worker=1

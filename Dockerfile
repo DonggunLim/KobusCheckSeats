@@ -1,4 +1,4 @@
-FROM node:22-slim AS base
+FROM node:22.23.4-slim AS base
 
 # OpenSSL 설치 
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
