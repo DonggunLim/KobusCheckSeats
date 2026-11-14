@@ -4,6 +4,7 @@ const serverEnvSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   REDIS_HOST: z.string().min(1).default("localhost"),
   REDIS_PORT: z.string().regex(/^\d+$/, "REDIS_PORT must be a number").default("6379"),
+  REDIS_PASSWORD: z.string().optional(),
   APP_URL: z.string().url().optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   TELEGRAM_CHAT_ID: z.string().min(1, "TELEGRAM_CHAT_ID is required"),

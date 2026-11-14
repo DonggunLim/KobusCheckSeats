@@ -15,6 +15,7 @@ export function getRedisConnection(): Redis {
     redisConnection = new Redis({
       host: env.REDIS_HOST,
       port: parseInt(env.REDIS_PORT),
+      password: env.REDIS_PASSWORD || undefined,
       maxRetriesPerRequest: null, // BullMQ 필수 설정
       lazyConnect: true, // 명시적으로 connect()를 호출할 때까지 연결하지 않음
     });
