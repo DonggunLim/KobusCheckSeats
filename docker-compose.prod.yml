@@ -16,8 +16,12 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - TELEGRAM_REQUESTER_LABEL=${TELEGRAM_REQUESTER_LABEL}
+    # home-network: 프록시 접속, home-data: MySQL·Redis 전용 망
     networks:
       - home-network
+      - home-data
+    mem_limit: 512m
+    pids_limit: 256
     restart: always
 
   # Worker (프로덕션)
@@ -36,10 +40,15 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - TELEGRAM_REQUESTER_LABEL=${TELEGRAM_REQUESTER_LABEL}
+    # 웹 요청을 받지 않으므로 MySQL·Redis 전용 망에만 연결
     networks:
-      - home-network
+      - home-data
+    mem_limit: 768m
+    pids_limit: 512
     restart: always
 
 networks:
   home-network:
     external: true # 기존에 생성된 외부 네트워크 사용
+  home-data:
+    external: true # MySQL·Redis 전용 망 (node-01에서 생성)
