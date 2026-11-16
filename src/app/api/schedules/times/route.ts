@@ -4,7 +4,11 @@ import prisma from "@/shared/lib/prisma";
 import { parseSearchParams, terminalCdSchema } from "@/shared/lib/api-validation";
 import { cache, TTL } from "@/shared/lib/cache";
 import { getKobusDateFromISODate, getKSTDateString } from "@/shared/lib/date";
-import { fetchKobusRouteSchedules, type KobusScheduleData } from "@/shared/lib/kobus-schedules";
+import {
+  fetchKobusRouteSchedules,
+  KobusScheduleUnavailableError,
+  type ScheduleInfo,
+} from "@/shared/lib/kobus-schedules";
 import { logger } from "@/shared/lib/logger";
 
 const log = logger.child({ route: "schedules/times" });
@@ -31,7 +35,7 @@ function buildScheduleResponse({
   arrival: string;
   date: string;
   source: ScheduleSource;
-  schedules: KobusScheduleData[];
+  schedules: ScheduleInfo[];
 }) {
   const uniqueTimes = Array.from(new Set(schedules.map((s) => s.departureTime))).sort();
   const timeDetails = schedules.reduce(
@@ -74,7 +78,7 @@ function buildScheduleResponse({
 async function getFallbackSchedules(
   departure: string,
   arrival: string
-): Promise<KobusScheduleData[]> {
+): Promise<ScheduleInfo[]> {
   return prisma.busSchedules.findMany({
     where: {
       deprCd: departure,
@@ -146,9 +150,16 @@ export async function GET(request: NextRequest) {
         schedules,
       });
 
-      cache.set(cacheKey, result, TTL.SCHEDULES);
+      // 배차 0건은 명절 예매 오픈 전처럼 곧 바뀔 수 있으므로 캐시하지 않는다.
+      if (result.count > 0) {
+        cache.set(cacheKey, result, TTL.SCHEDULES);
+      }
       return NextResponse.json(result);
     } catch (error) {
+      if (error instanceof KobusScheduleUnavailableError) {
+        return NextResponse.json({ error: error.message }, { status: 422 });
+      }
+
       log.warn(
         { err: error, departure, arrival, date },
         "Live schedule lookup failed, using DB fallback"

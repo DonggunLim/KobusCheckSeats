@@ -35,11 +35,11 @@ export const KOBUS = {
 
   // HTML 파싱용 CSS 셀렉터
   SELECTORS: {
-    BUS_ROWS: 'div.bus_time p[role="row"]', // 버스 시간표 행
+    SCHEDULE_TABLE: "div.bustime_wrap div.bus_time", // 배차 조회 결과 표 (배차 0건이어도 존재)
+    BUS_ROWS: 'div.bus_time p[role="row"]', // 버스 시간표 행 (매진·출발임박 포함)
     START_TIME: "span.start_time", // 출발 시간
     REMAIN_SEATS: "span.remain", // 잔여 좌석
     STATUS: "span.status", // 좌석 상태
-    SCHEDULE_LINKS: 'a[onclick*="fnSatsChc"]', // 시간표 링크
     BUS_GRADE: "span.grade", // 버스 등급
     VIA_LOCATION: "span.grade span.via", // 경유지
     BUS_COMPANY: "span.bus_com span", // 버스 회사
@@ -48,7 +48,6 @@ export const KOBUS = {
   // 좌석 상태 문자열
   STATUS: {
     SOLDOUT: "매진", // 매진 상태
-    SEATS_ZERO: "0 석", // 좌석 0석
     NOT_AVAILABLE: "N/A", // 정보 없음
     NO_INFO: "정보 없음", // 정보 없음 (한글)
   },

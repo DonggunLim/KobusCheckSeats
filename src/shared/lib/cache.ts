@@ -38,5 +38,5 @@ export const cache = new MemoryCache();
 export const TTL = {
   AREAS: 24 * 60 * 60 * 1000, // 24 hours
   TERMINALS: 24 * 60 * 60 * 1000, // 24 hours
-  SCHEDULES: 6 * 60 * 60 * 1000, // 6 hours
+  SCHEDULES: 10 * 60 * 1000, // 10 minutes: 명절 임시차 추가 등 배차 변경을 빨리 반영
 } as const;

@@ -112,14 +112,6 @@ export async function getMasterData(options: { disconnect?: boolean } = {}) {
         (r: any) => terminalMap.has(r.deprCd) && terminalMap.has(r.arvlCd)
       );
 
-    if (routesDirect.length > 0) {
-      await prisma.routesDirect.deleteMany({});
-      await prisma.routesDirect.createMany({
-        data: routesDirect,
-      });
-      console.log(`[SYNC] 직행 노선 ${routesDirect.length}건 처리 완료`);
-    }
-
     const routesTransfer = data.tfrInfList
       .map((r: any) => ({
         deprCd: r.deprCd,
@@ -134,11 +126,20 @@ export async function getMasterData(options: { disconnect?: boolean } = {}) {
           terminalMap.has(r.tfrCd)
       );
 
+    // 삭제와 재생성을 한 트랜잭션으로 묶어, 동기화 중 조회나 중간 실패로 노선이 비지 않게 한다.
+    if (routesDirect.length > 0) {
+      await prisma.$transaction([
+        prisma.routesDirect.deleteMany({}),
+        prisma.routesDirect.createMany({ data: routesDirect }),
+      ]);
+      console.log(`[SYNC] 직행 노선 ${routesDirect.length}건 처리 완료`);
+    }
+
     if (routesTransfer.length > 0) {
-      await prisma.routesTransfer.deleteMany({});
-      await prisma.routesTransfer.createMany({
-        data: routesTransfer,
-      });
+      await prisma.$transaction([
+        prisma.routesTransfer.deleteMany({}),
+        prisma.routesTransfer.createMany({ data: routesTransfer }),
+      ]);
       console.log(`[SYNC] 환승 노선 ${routesTransfer.length}건 처리 완료`);
     }
 

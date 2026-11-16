@@ -1,4 +1,4 @@
-import type { Area, TerminalData } from "../model/types";
+import type { Area, FetchAvailableTimesResponse, TerminalData } from "../model/types";
 
 /**
  * Fetch all available areas
@@ -34,18 +34,18 @@ export async function fetchDestinations(deprCd: string): Promise<TerminalData[]>
 }
 
 /**
- * Fetch available times for a route
+ * Fetch available times for a route on a specific date
  */
 export async function fetchAvailableTimes(
   departure: string,
   arrival: string,
   date: string
-): Promise<string[]> {
+): Promise<FetchAvailableTimesResponse> {
   const params = new URLSearchParams({ departure, arrival, date });
   const response = await fetch(`/api/schedules/times?${params.toString()}`);
+  const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error("Failed to fetch available times");
+    throw new Error(data?.error || "운행 시간 조회에 실패했습니다");
   }
-  const data = await response.json();
-  return data.times || [];
+  return data;
 }

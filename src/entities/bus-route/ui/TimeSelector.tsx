@@ -19,7 +19,7 @@ export function TimeSelector({
   onTimesChange,
 }: TimeSelectorProps) {
   const { toggleTime } = useTimeSelector();
-  const { availableTimes, loading, error } = useAvailableTimes(
+  const { availableTimes, loading, error, source } = useAvailableTimes(
     departureTerminalCd,
     arrivalTerminalCd,
     selectedDate
@@ -55,10 +55,17 @@ export function TimeSelector({
         <p className="text-sm text-red-accent py-6 text-center">{error}</p>
       ) : availableTimes.length === 0 ? (
         <p className="text-sm text-red-accent py-6 text-center">
-          해당 노선의 운행 정보가 없습니다
+          코버스에 조회되는 배차가 없습니다. 명절처럼 예매 오픈 전인 날짜라면 오픈 후 다시
+          확인해주세요.
         </p>
       ) : (
         <>
+          {source === "db-fallback" && (
+            <p className="mb-3 text-xs text-red-accent">
+              코버스 실시간 조회에 실패해 지난 정기 시간표를 표시합니다. 선택한 날짜의 실제 배차와
+              다를 수 있습니다.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {availableTimes.map((time: string) => {
               const isSelected = selectedTimes.includes(time);

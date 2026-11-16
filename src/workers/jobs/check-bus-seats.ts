@@ -1,102 +1,63 @@
-import axios from "axios";
-import { wrapper } from "axios-cookiejar-support";
-import { CookieJar } from "tough-cookie";
-import * as cheerio from "cheerio";
 import prisma from "../../shared/lib/prisma";
 import type { RouteQuery, RouteScheduleSlot, CheckResult } from "../../shared/types/bus-check.types";
 import { KOBUS } from "@/shared/constants/kobus";
 import { getTargetDateKST } from "@/shared/lib/date";
-import { buildRouteSearchParams } from "@/shared/lib/kobus-params";
+import { fetchKobusRouteSchedules, hasAvailableSeats } from "@/shared/lib/kobus-schedules";
 import { logger } from "@/shared/lib/logger";
 
 const log = logger.child({ module: "check-bus-seats" });
 
 /**
- * axios + cheerio를 사용하여 코버스 사이트에서 버스 좌석을 확인합니다.
+ * 코버스 배차 조회 결과에서 목표 시간대의 잔여 좌석을 확인합니다.
+ * 조회 결과 페이지를 받지 못하면(리다이렉트, 대기열, 구조 변경 등) "좌석 없음"이 아닌 실패로 반환합니다.
  */
 export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
   const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes } = config;
   const startTime = Date.now();
-
-  const jar = new CookieJar();
-  const client = wrapper(axios.create({ jar, timeout: KOBUS.HTTP.TIMEOUT }));
 
   const results: RouteScheduleSlot[] = [];
   let foundSeats = false;
   let firstFoundTime: string | null = null;
 
   try {
-    await client.get(KOBUS.URLS.SESSION_COOKIE, {
-      headers: {
-        "User-Agent": KOBUS.HTTP.USER_AGENT,
-        Accept: KOBUS.HTTP.HEADERS.ACCEPT_HTML,
-      },
-    });
-
-    const { ymd, formatted } = getTargetDateKST(targetMonth, targetDate, targetYear);
     const terminalNames = await getTerminalNames(departureCd, arrivalCd);
-
-    const pageParams = buildRouteSearchParams(
-      departureCd,
-      terminalNames.departureName,
-      arrivalCd,
-      terminalNames.arrivalName,
-      ymd,
-      formatted
-    );
-
-    const response = await client.post(KOBUS.URLS.ROUTE_INFO, pageParams, {
-      headers: {
-        "Content-Type": KOBUS.HTTP.HEADERS.CONTENT_TYPE_FORM,
-        "User-Agent": KOBUS.HTTP.USER_AGENT,
-        Referer: KOBUS.URLS.SESSION_COOKIE,
-        Accept: KOBUS.HTTP.HEADERS.ACCEPT_HTML,
+    const schedules = await fetchKobusRouteSchedules({
+      route: {
+        deprCd: departureCd,
+        deprNm: terminalNames.departureName,
+        arvlCd: arrivalCd,
+        arvlNm: terminalNames.arrivalName,
       },
+      date: getTargetDateKST(targetMonth, targetDate, targetYear),
     });
-
-    const $ = cheerio.load(response.data);
-    const busRows = $(KOBUS.SELECTORS.BUS_ROWS);
 
     for (const time of targetTimes) {
-      let found = false;
+      const matches = schedules.filter((schedule) => schedule.departureTime === time);
 
-      busRows.each((_idx: number, row: cheerio.Element) => {
-        const $row = $(row);
-
-        const timeText = $row.find(KOBUS.SELECTORS.START_TIME).text().trim();
-        const normalizedTime = timeText.replace(/\s+/g, "");
-
-        if (normalizedTime === time) {
-          const remainSeatsText = $row.find(KOBUS.SELECTORS.REMAIN_SEATS).text().trim();
-          const statusText = $row.find(KOBUS.SELECTORS.STATUS).text().trim();
-
-          const hasSeats =
-            !statusText.includes(KOBUS.STATUS.SOLDOUT) &&
-            !remainSeatsText.includes(KOBUS.STATUS.SEATS_ZERO);
-
-          if (hasSeats) {
-            foundSeats = true;
-            if (!firstFoundTime) {
-              firstFoundTime = time;
-            }
-          }
-
-          results.push({ time, remainSeats: remainSeatsText, status: statusText, hasSeats });
-          found = true;
-        }
-      });
-
-      if (!found) {
+      if (matches.length === 0) {
         results.push({
           time,
           remainSeats: KOBUS.STATUS.NOT_AVAILABLE,
           status: KOBUS.STATUS.NO_INFO,
           hasSeats: false,
         });
+        continue;
+      }
+
+      for (const schedule of matches) {
+        const hasSeats = hasAvailableSeats(schedule);
+        if (hasSeats) {
+          foundSeats = true;
+          firstFoundTime ??= time;
+        }
+        results.push({
+          time,
+          remainSeats: schedule.remainSeatsText,
+          status: schedule.status,
+          hasSeats,
+        });
       }
     }
-
-    const durationMs = Date.now() - startTime;
 
     return {
       timestamp: new Date().toISOString(),
@@ -106,10 +67,9 @@ export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
       success: true,
       totalCheckCount: targetTimes.length,
       firstFoundTime,
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   } catch (error) {
-    const durationMs = Date.now() - startTime;
     log.error(
       { err: error instanceof Error ? error.message : String(error), departureCd, arrivalCd },
       "Seat check failed"
@@ -124,7 +84,7 @@ export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
       error: error instanceof Error ? error.message : String(error),
       totalCheckCount: targetTimes.length,
       firstFoundTime: null,
-      durationMs,
+      durationMs: Date.now() - startTime,
     };
   }
 }

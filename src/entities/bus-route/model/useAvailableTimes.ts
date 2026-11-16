@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchAvailableTimes } from "../api";
+import type { FetchAvailableTimesResponse } from "./types";
 import { getKSTDateString } from "@/shared/lib/date";
 
 export function useAvailableTimes(
@@ -12,24 +13,28 @@ export function useAvailableTimes(
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<FetchAvailableTimesResponse["source"] | null>(null);
 
   useEffect(() => {
     if (!departureTerminalCd || !arrivalTerminalCd) {
       setAvailableTimes([]);
+      setSource(null);
       return;
     }
 
     async function loadAvailableTimes() {
       setLoading(true);
       setError(null);
+      setSource(null);
       try {
-        const times = await fetchAvailableTimes(
+        const data = await fetchAvailableTimes(
           departureTerminalCd,
           arrivalTerminalCd,
           selectedDate
         );
 
-        setAvailableTimes(filterFutureTimes(times, selectedDate));
+        setAvailableTimes(filterFutureTimes(data.times, selectedDate));
+        setSource(data.source);
       } catch (err) {
         console.error("Failed to load available times:", err);
         setError(err instanceof Error ? err.message : "시간대 조회 실패");
@@ -45,6 +50,7 @@ export function useAvailableTimes(
     availableTimes,
     loading,
     error,
+    source,
   };
 }
 

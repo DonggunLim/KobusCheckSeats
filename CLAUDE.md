@@ -62,9 +62,16 @@ In Docker Compose, these are separate services sharing the same network. Workers
 - `/api/terminals` — Bus terminals list
 - `/api/areas` — Area codes
 - `/api/destinations` — Destination lookup
-- `/api/schedules/times` — Available departure times for a route
+- `/api/schedules/times` — Departure times for a route on a date (live Kobus lookup)
 - `/api/queue/job` — Submit a seat monitoring job
 - `/api/jobs/history` — Job history
+
+### Kobus Data Sources
+
+- **Areas/terminals/routes:** `readRotLinInf.ajax`, synced weekly (Mon 03:00 KST) by the maintenance worker; route tables are replaced in a transaction.
+- **Departure times and seats:** `alcnSrch.do` for the selected date, parsed by `src/shared/lib/kobus-schedules.ts` (shared by the times API and the seat worker). All rows count, including sold-out (`매진`) and `출발임박` rows; seats come from the numeric `N 석` value.
+- A result page with zero rows (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. A redirect (past date, beyond the sale window, unknown route) is `KobusScheduleUnavailableError`; a page without the result table is an error, never "no seats".
+- `bus_schedules` is a weekly D+2 snapshot used only when the live lookup fails; the UI labels it as possibly inaccurate.
 
 ### Infrastructure
 
