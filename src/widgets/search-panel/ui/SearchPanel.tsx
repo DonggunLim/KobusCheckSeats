@@ -11,6 +11,9 @@ export function SearchPanel() {
     resetKey,
     handleRouteChange,
     handleTimesChange,
+    handleModeChange,
+    handleTimeRangeChange,
+    handleKeepWatchingChange,
     handleDateChange,
     resetForm,
   } = useSearchPanel();
@@ -51,9 +54,29 @@ export function SearchPanel() {
           departureTerminalCd={formData.departureTerminalCd}
           arrivalTerminalCd={formData.arrivalTerminalCd}
           selectedDate={formData.date}
+          mode={formData.mode}
+          onModeChange={handleModeChange}
           selectedTimes={formData.selectedTimes}
           onTimesChange={handleTimesChange}
+          timeRange={formData.timeRange}
+          onTimeRangeChange={handleTimeRangeChange}
         />
+
+        <label className="flex items-start gap-2 text-sm text-text-primary">
+          <input
+            type="checkbox"
+            checked={formData.keepWatching}
+            onChange={(e) => handleKeepWatchingChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-green-primary"
+          />
+          <span>
+            좌석을 찾은 뒤에도 계속 감시
+            <span className="block text-xs text-text-secondary">
+              알림 후 예매 전에 자리가 다시 팔릴 때를 대비합니다. 새로 좌석이 생길 때마다 다시
+              알리고, 출발 시간이 지나면 끝납니다.
+            </span>
+          </span>
+        </label>
 
         {/* 조회 시작 버튼 */}
         <CheckButton formData={formData} onSuccess={resetForm} />

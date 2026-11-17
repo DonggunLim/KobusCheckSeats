@@ -10,7 +10,8 @@ export function useCheckSeats() {
 
   const startSession = useCallback(
     async (formData: CheckBusSeatsFormData) => {
-      if (formData.selectedTimes.length === 0) {
+      const isRange = formData.mode === "range";
+      if (isRange ? formData.timeRange.start > formData.timeRange.end : formData.selectedTimes.length === 0) {
         toast({ title: "확인할 시간을 선택해주세요", variant: "destructive" });
         return false;
       }
@@ -24,7 +25,10 @@ export function useCheckSeats() {
           targetYear: Number(year),
           targetMonth: `${parseInt(month)}월`,
           targetDate: day,
-          targetTimes: formData.selectedTimes,
+          ...(isRange
+            ? { targetTimeRange: formData.timeRange }
+            : { targetTimes: formData.selectedTimes }),
+          keepWatching: formData.keepWatching,
         };
 
         // 큐에 Job 추가
@@ -33,7 +37,9 @@ export function useCheckSeats() {
         refetch();
         toast({
           title: "좌석 감시를 등록했습니다",
-          description: "3분마다 확인하고, 좌석이 발견되면 설정된 텔레그램 그룹으로 알려드립니다.",
+          description: formData.keepWatching
+            ? "1분마다 확인하고, 새로 좌석이 생길 때마다 텔레그램으로 알려드립니다."
+            : "1분마다 확인하고, 좌석이 발견되면 텔레그램으로 알려드립니다.",
         });
         return true;
       } catch (err) {

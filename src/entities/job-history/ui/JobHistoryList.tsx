@@ -12,7 +12,7 @@ export function JobHistoryList() {
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-text-primary">감시 기록</h2>
           <p className="mt-2 text-xs text-text-secondary break-words">
-            3분마다 좌석을 확인하고, 발견 시 텔레그램 알림을 시도합니다. 자동 예매는 하지 않습니다.
+            1분마다 좌석을 확인하고, 발견하면 텔레그램으로 알립니다(실패하면 다음 확인 때 다시 보냄). 자동 예매는 하지 않습니다.
           </p>
         </div>
         <button

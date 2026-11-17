@@ -6,22 +6,32 @@ import { fetchJobHistory } from "../api";
 
 export function useJobHistory(limit: number = 20) {
   const [jobs, setJobs] = useState<JobHistoryItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const sseConnected = useRef(false);
 
-  const fetchJobs = useCallback(async () => {
+  // 상태는 응답 콜백에서만 바꾼다 (effect 안에서 동기 setState를 하지 않기 위해).
+  const fetchJobs = useCallback(
+    () =>
+      fetchJobHistory(limit)
+        .then(
+          (data) => {
+            setJobs(data.jobs || []);
+            setError(null);
+          },
+          (err: unknown) => {
+            setError(err instanceof Error ? err.message : "히스토리 조회 실패");
+          }
+        )
+        .finally(() => setLoading(false)),
+    [limit]
+  );
+
+  // 사용자가 누르는 새로고침은 진행 표시를 먼저 켠다.
+  const refetch = useCallback(() => {
     setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchJobHistory(limit);
-      setJobs(data.jobs || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "히스토리 조회 실패");
-    } finally {
-      setLoading(false);
-    }
-  }, [limit]);
+    void fetchJobs();
+  }, [fetchJobs]);
 
   // Initial fetch
   useEffect(() => {
@@ -81,6 +91,6 @@ export function useJobHistory(limit: number = 20) {
     jobs,
     loading,
     error,
-    refetch: fetchJobs,
+    refetch,
   };
 }

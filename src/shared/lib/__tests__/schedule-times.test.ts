@@ -5,7 +5,6 @@ import type * as KobusSchedules from "../kobus-schedules";
 vi.mock("@/shared/lib/prisma", () => ({
   default: {
     terminal: { findMany: vi.fn() },
-    busSchedules: { findMany: vi.fn() },
   },
 }));
 vi.mock("@/shared/lib/kobus-schedules", async (importOriginal) => ({
@@ -63,12 +62,12 @@ describe("time selection seat summary", () => {
     expect(cachedBody.seats).toEqual(body.seats);
   });
 
-  it("never invents seat counts from the date-independent fallback timetable", async () => {
+  it("reports a live lookup failure instead of showing times that may not exist on that date", async () => {
     vi.mocked(fetchKobusRouteSchedules).mockRejectedValue(new Error("Connection failed"));
-    vi.mocked(prisma.busSchedules.findMany).mockResolvedValue([]);
 
-    const body = await (await GET(request())).json();
-    expect(body.source).toBe("db-fallback");
-    expect(body.seats).toBeNull();
+    const response = await GET(request());
+    const body = await response.json();
+    expect(response.status).toBe(502);
+    expect(body.times).toBeUndefined();
   });
 });

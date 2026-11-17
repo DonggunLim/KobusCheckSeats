@@ -2,84 +2,82 @@ import { Worker, Job } from "bullmq";
 import { getRedisConnection } from "../shared/lib/redis";
 import { type CheckSeatsJobData } from "../shared/lib/queue/queue";
 import { checkBusSeats } from "./jobs/check-bus-seats";
+import { recordKobusCheck } from "./kobus-health";
 import prisma from "../shared/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { getKSTNow, getTargetDateTimeKST } from "../shared/lib/date";
+import { getKSTNow, getMonitoringDeadlineKST } from "../shared/lib/date";
 import { sendTelegramMessage } from "@/shared/lib/telegram/telegram-message";
-import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
+import { JOB_CANCEL_REASON_KEY, NOTIFY_STATUS, type NotifyStatus } from "@/shared/constants/job";
 import { publishJobStatusUpdate } from "@/shared/lib/queue/job-events";
 import { logger } from "@/shared/lib/logger";
+import type { CheckResult } from "@/shared/types/bus-check.types";
 
 const log = logger.child({ module: "check-seats-worker" });
+
+// 재시도 없이 다음 확인으로 넘어가기 위한 신호 (BullMQ backoff로 다음 확인을 예약)
+const CONTINUE_MONITORING = "CONTINUE_MONITORING";
+const NOTIFY_FAILED_MESSAGE = "좌석을 찾았지만 텔레그램 알림 전송에 실패했습니다. 다음 확인 때 다시 보냅니다.";
 
 // 워커 생성
 const worker = new Worker<CheckSeatsJobData>(
   "check-seats",
   async (job: Job<CheckSeatsJobData>) => {
-    log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Processing job");
+    const jobId = job.id as string;
+    log.info({ jobId, attempt: job.attemptsMade + 1 }, "Processing job");
 
-    const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes } = job.data;
-
-    // DB에서 취소 여부 먼저 체크
-    const jobHistory = await prisma.jobHistory.findUnique({
-      where: { jobId: job.id as string },
-      select: { status: true },
+    const history = await prisma.jobHistory.findUnique({
+      where: { jobId },
+      select: { status: true, keepWatching: true, notifyStatus: true, result: true },
     });
 
-    if (jobHistory?.status === "cancelled") {
-      log.info({ jobId: job.id }, "Job already cancelled, skipping");
+    if (history?.status === "cancelled") {
+      log.info({ jobId }, "Job already cancelled, skipping");
       return { foundSeats: false, reason: "사용자가 작업을 취소함" };
     }
 
-    // 목표 날짜/시간이 지났는지 체크
-    const shouldContinue = checkShouldContinue(targetYear, targetMonth, targetDate, targetTimes);
-
-    if (!shouldContinue) {
-      log.info({ jobId: job.id }, "Target time passed, cancelling job");
-      await updateJobStatus(
-        job.id as string,
-        "cancelled",
-        job.attemptsMade,
-        { foundSeats: false },
-        undefined,
-        JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND
-      );
-      return { foundSeats: false, reason: JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND };
+    if (Date.now() >= getMonitoringDeadlineKST(job.data).getTime()) {
+      log.info({ jobId }, "Target time passed, finishing job");
+      await finishMonitoring(jobId, job.attemptsMade);
+      return { foundSeats: false, reason: "목표 시간 경과" };
     }
 
-    const result = await checkBusSeats({
-      departureCd,
-      arrivalCd,
-      targetYear,
-      targetMonth,
-      targetDate,
-      targetTimes,
-    });
+    const result = await checkBusSeats(job.data);
+    await recordKobusCheck(result);
 
     if (!result.success) {
+      await recordCheck(jobId, { error: result.error ?? "SEAT_CHECK_FAILED" });
       throw new Error(result.error || "SEAT_CHECK_FAILED");
     }
 
-    if (result.foundSeats) {
-      log.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "Seats found!");
+    // 직전 확인에서 이미 좌석이 있던 시각은 다시 알리지 않는다 (계속 감시 중 알림 반복 방지).
+    const previouslyAvailable = getAvailableTimes(history?.result);
+    const hasNewSeats = result.results.some(
+      (slot) => slot.hasSeats && !previouslyAvailable.has(slot.time)
+    );
+    const shouldNotify =
+      result.foundSeats && (hasNewSeats || history?.notifyStatus === NOTIFY_STATUS.FAILED);
 
-      try {
-        const notified = await sendTelegramMessage(result);
-        if (!notified) {
-          log.warn({ jobId: job.id }, "Telegram notification failed (job still completed)");
-        }
-      } catch (msgError) {
-        log.error(
-          { err: msgError, jobId: job.id },
-          "Telegram notification failed (job still completed)"
-        );
-      }
+    // null: 좌석이 사라졌으므로 이전 알림 실패 표시를 지운다.
+    let notifyStatus: NotifyStatus | null | undefined = result.foundSeats ? undefined : null;
+    if (shouldNotify) {
+      log.info({ jobId, attempt: job.attemptsMade + 1 }, "Seats found, notifying");
+      notifyStatus = (await sendTelegramMessage(result))
+        ? NOTIFY_STATUS.SENT
+        : NOTIFY_STATUS.FAILED;
+    }
 
-      await updateJobStatus(job.id as string, "completed", job.attemptsMade + 1, result);
+    await recordCheck(jobId, { result, notifyStatus });
+
+    if (notifyStatus === NOTIFY_STATUS.SENT && !history?.keepWatching) {
+      await updateJobStatus(jobId, "completed", job.attemptsMade + 1, result);
       return result;
     }
 
-    throw new Error("NO_SEATS_AVAILABLE");
+    if (notifyStatus === NOTIFY_STATUS.FAILED) {
+      throw new Error(NOTIFY_FAILED_MESSAGE);
+    }
+
+    throw new Error(CONTINUE_MONITORING);
   },
   {
     connection: getRedisConnection(),
@@ -91,16 +89,67 @@ const worker = new Worker<CheckSeatsJobData>(
   }
 );
 
-// 목표 날짜/시간이 지났는지 확인 (KST 기준)
-function checkShouldContinue(
-  targetYear: number | undefined,
-  targetMonth: string,
-  targetDate: string,
-  targetTimes: string[]
-): boolean {
-  const lastTime = [...targetTimes].sort().reverse()[0];
-  const targetDateTime = getTargetDateTimeKST(targetYear, targetMonth, targetDate, lastTime);
-  return Date.now() < targetDateTime.getTime();
+function getAvailableTimes(storedResult: string | null | undefined): Set<string> {
+  if (!storedResult) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(storedResult);
+    if (typeof parsed !== "object" || parsed === null || !("results" in parsed)) return new Set();
+    const results: unknown = parsed.results;
+    if (!Array.isArray(results)) return new Set();
+    return new Set(
+      results.flatMap((slot: unknown) =>
+        typeof slot === "object" &&
+        slot !== null &&
+        "hasSeats" in slot &&
+        slot.hasSeats === true &&
+        "time" in slot &&
+        typeof slot.time === "string"
+          ? [slot.time]
+          : []
+      )
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/** 확인 1회의 결과(마지막 확인 시각·결과·오류·알림 상태)를 기록한다. */
+async function recordCheck(
+  jobId: string,
+  {
+    result,
+    error,
+    notifyStatus,
+  }: { result?: CheckResult; error?: string; notifyStatus?: NotifyStatus | null }
+) {
+  try {
+    const now = getKSTNow();
+    await prisma.jobHistory.update({
+      where: { jobId },
+      data: {
+        lastCheckedAt: now,
+        updatedAt: now,
+        ...(result ? { result: JSON.stringify(result), error: null } : {}),
+        ...(error ? { error } : {}),
+        ...(notifyStatus !== undefined ? { notifyStatus } : {}),
+        ...(notifyStatus === NOTIFY_STATUS.SENT ? { notifiedCount: { increment: 1 } } : {}),
+      },
+    });
+  } catch (err) {
+    log.error({ err, jobId }, "Failed to record check result");
+  }
+}
+
+/** 목표 시간이 지나 감시를 끝낸다. 계속 감시 중 알림을 보냈다면 "좌석 없음"으로 기록하지 않는다. */
+async function finishMonitoring(jobId: string, attemptsMade: number) {
+  const history = await prisma.jobHistory
+    .findUnique({ where: { jobId }, select: { notifiedCount: true } })
+    .catch(() => null);
+  const reason =
+    (history?.notifiedCount ?? 0) > 0
+      ? JOB_CANCEL_REASON_KEY.MONITORING_ENDED
+      : JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND;
+  await updateJobStatus(jobId, "cancelled", attemptsMade, undefined, undefined, reason);
 }
 
 function hasAttemptsRemaining(job: Job<CheckSeatsJobData>): boolean {
@@ -168,32 +217,25 @@ worker.on("completed", async (job: Job<CheckSeatsJobData>) => {
 
 worker.on("failed", async (job: Job<CheckSeatsJobData> | undefined, err: Error) => {
   if (!job) return;
+  const jobId = job.id as string;
 
-  if (err.message === "NO_SEATS_AVAILABLE") {
+  if (err.message === CONTINUE_MONITORING) {
     if (hasAttemptsRemaining(job)) {
-      await updateJobStatus(job.id as string, "waiting", job.attemptsMade);
+      await updateJobStatus(jobId, "waiting", job.attemptsMade);
       return;
     }
-
-    await updateJobStatus(
-      job.id as string,
-      "cancelled",
-      job.attemptsMade,
-      { foundSeats: false },
-      undefined,
-      JOB_CANCEL_REASON_KEY.NO_SEATS_FOUND
-    );
+    await finishMonitoring(jobId, job.attemptsMade);
     return;
   }
 
   if (hasAttemptsRemaining(job)) {
-    log.warn({ jobId: job.id, err: err.message }, "Job attempt failed, will retry");
-    await updateJobStatus(job.id as string, "waiting", job.attemptsMade, undefined, err.message);
+    log.warn({ jobId, err: err.message }, "Job attempt failed, will retry");
+    await updateJobStatus(jobId, "waiting", job.attemptsMade, undefined, err.message);
     return;
   }
 
-  log.error({ jobId: job.id, err: err.message }, "Job failed");
-  await updateJobStatus(job.id as string, "failed", job.attemptsMade, undefined, err.message);
+  log.error({ jobId, err: err.message }, "Job failed");
+  await updateJobStatus(jobId, "failed", job.attemptsMade, undefined, err.message);
 });
 
 worker.on("error", (err: Error) => {

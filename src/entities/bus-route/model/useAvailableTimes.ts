@@ -2,72 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { fetchAvailableTimes } from "../api";
-import type { FetchAvailableTimesResponse, TimeSeatSummary } from "./types";
+import type { FetchAvailableTimesResponse } from "./types";
 import { getKSTDateString } from "@/shared/lib/date";
+
+type LoadedTimes =
+  | { key: string; data: FetchAvailableTimesResponse; error?: undefined }
+  | { key: string; data?: undefined; error: string };
 
 export function useAvailableTimes(
   departureTerminalCd: string,
   arrivalTerminalCd: string,
   selectedDate: string
 ) {
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<FetchAvailableTimesResponse["source"] | null>(null);
-  const [seats, setSeats] = useState<Record<string, TimeSeatSummary> | null>(null);
-  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const requestKey =
+    departureTerminalCd && arrivalTerminalCd
+      ? `${departureTerminalCd}|${arrivalTerminalCd}|${selectedDate}`
+      : null;
+  const [loaded, setLoaded] = useState<LoadedTimes | null>(null);
 
   useEffect(() => {
-    setAvailableTimes([]);
-    setSource(null);
-    setSeats(null);
-    setCheckedAt(null);
-    setError(null);
-    setLoading(false);
+    if (!requestKey) return;
 
-    if (!departureTerminalCd || !arrivalTerminalCd) {
-      return;
-    }
-
-    // 노선·날짜를 빠르게 바꾸면 이전 요청 응답이 늦게 도착해 다른 날짜 시간표를 덮어쓸 수 있다.
+    // 노선·날짜를 빠르게 바꾸면 이전 요청 응답이 늦게 도착할 수 있다. 응답은 요청 키와 함께 저장해
+    // 현재 조건과 다른 응답은 화면에 쓰지 않는다.
     let stale = false;
-
-    async function loadAvailableTimes() {
-      setLoading(true);
-      try {
-        const data = await fetchAvailableTimes(
-          departureTerminalCd,
-          arrivalTerminalCd,
-          selectedDate
-        );
-        if (stale) return;
-
-        setAvailableTimes(filterFutureTimes(data.times, selectedDate));
-        setSource(data.source);
-        setSeats(data.seats);
-        setCheckedAt(data.checkedAt);
-      } catch (err) {
+    fetchAvailableTimes(departureTerminalCd, arrivalTerminalCd, selectedDate).then(
+      (data) => {
+        if (!stale) setLoaded({ key: requestKey, data });
+      },
+      (err: unknown) => {
         if (stale) return;
         console.error("Failed to load available times:", err);
-        setError(err instanceof Error ? err.message : "시간대 조회 실패");
-      } finally {
-        if (!stale) setLoading(false);
+        setLoaded({ key: requestKey, error: err instanceof Error ? err.message : "시간대 조회 실패" });
       }
-    }
-    loadAvailableTimes();
+    );
 
     return () => {
       stale = true;
     };
-  }, [departureTerminalCd, arrivalTerminalCd, selectedDate]);
+  }, [requestKey, departureTerminalCd, arrivalTerminalCd, selectedDate]);
+
+  const current = loaded && loaded.key === requestKey ? loaded : null;
 
   return {
-    availableTimes,
-    loading,
-    error,
-    source,
-    seats,
-    checkedAt,
+    availableTimes: current?.data ? filterFutureTimes(current.data.times, selectedDate) : [],
+    loading: !!requestKey && !current,
+    error: current?.error ?? null,
+    seats: current?.data?.seats ?? null,
+    checkedAt: current?.data?.checkedAt ?? null,
   };
 }
 

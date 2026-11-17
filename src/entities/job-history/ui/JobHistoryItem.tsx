@@ -34,7 +34,15 @@ const STATUS_CONFIG = {
   },
 };
 
-function getAvailableResults(result: unknown) {
+interface ResultSlot {
+  time: string;
+  remainSeats: string;
+  status: string;
+  hasSeats: boolean;
+}
+
+// result는 워커가 저장한 JSON이라 형식을 확인한 뒤에만 쓴다.
+function getResultSlots(result: unknown): ResultSlot[] {
   if (typeof result !== "object" || result === null || !("results" in result)) {
     return [];
   }
@@ -43,26 +51,34 @@ function getAvailableResults(result: unknown) {
     return [];
   }
   return results.filter(
-    (slot: unknown): slot is { time: string; remainSeats: string; hasSeats: true } =>
+    (slot: unknown): slot is ResultSlot =>
       typeof slot === "object" &&
       slot !== null &&
       "hasSeats" in slot &&
-      slot.hasSeats === true &&
+      typeof slot.hasSeats === "boolean" &&
       "time" in slot &&
       typeof slot.time === "string" &&
       slot.time.trim().length > 0 &&
       "remainSeats" in slot &&
       typeof slot.remainSeats === "string" &&
-      slot.remainSeats.trim().length > 0
+      "status" in slot &&
+      typeof slot.status === "string"
   );
 }
+
+const LAST_CHECK_PREVIEW = 4;
 
 export function JobHistoryItemCard({ job, onJobCancelled }: JobHistoryItemCardProps) {
   const [isCancelling, setIsCancelling] = useState(false);
   const status = STATUS_CONFIG[job.status];
 
   const canCancel = job.status === "waiting" || job.status === "active";
-  const availableResults = job.status === "completed" ? getAvailableResults(job.result) : [];
+  const resultSlots = getResultSlots(job.result);
+  const availableResults = job.status === "completed" ? resultSlots.filter((slot) => slot.hasSeats) : [];
+  const schedule =
+    job.timeRangeStart && job.timeRangeEnd
+      ? `${job.timeRangeStart}~${job.timeRangeEnd} 출발 전체`
+      : job.targetTimes.join(", ");
 
   const handleCancel = async () => {
     if (!confirm("좌석 감시를 취소하시겠습니까? 더 이상 좌석을 확인하지 않습니다.")) {
@@ -106,9 +122,33 @@ export function JobHistoryItemCard({ job, onJobCancelled }: JobHistoryItemCardPr
           <div className="flex items-start gap-2">
             <span className="text-xs text-text-secondary min-w-10 shrink-0">일정</span>
             <span className="text-sm text-text-primary min-w-0 break-words">
-              {job.targetMonth} {job.targetDate}일 {job.targetTimes.join(", ")}
+              {job.targetMonth} {job.targetDate}일 {schedule}
+              {job.keepWatching && (
+                <span className="ml-2 rounded bg-green-primary/10 px-1.5 py-0.5 text-[11px] text-green-dark">
+                  계속 감시
+                </span>
+              )}
             </span>
           </div>
+
+          {/* 진행 중인 감시: 마지막 확인 시각과 그때 본 좌석 상태 */}
+          {canCancel && job.lastCheckedAt && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs text-text-secondary min-w-10 shrink-0">최근</span>
+              <div className="text-xs text-text-primary min-w-0 break-words">
+                {/* KST 벽시계 시각이 UTC 표기로 저장되므로 문자열에서 바로 읽는다. */}
+                <span className="text-text-secondary">{job.lastCheckedAt.slice(11, 16)} 확인 · </span>
+                {resultSlots.length === 0
+                  ? "결과 없음"
+                  : resultSlots
+                      .slice(0, LAST_CHECK_PREVIEW)
+                      .map((slot) => `${slot.time} ${slot.hasSeats ? slot.remainSeats : slot.status}`)
+                      .join(" · ")}
+                {resultSlots.length > LAST_CHECK_PREVIEW &&
+                  ` 외 ${resultSlots.length - LAST_CHECK_PREVIEW}대`}
+              </div>
+            </div>
+          )}
 
           {job.status === "completed" && (
             <div className="flex items-start gap-2">
@@ -126,26 +166,17 @@ export function JobHistoryItemCard({ job, onJobCancelled }: JobHistoryItemCardPr
                   <p>이 기록에는 표시할 시간·좌석 상세 정보가 없습니다.</p>
                 )}
                 <p className="text-text-secondary">
-                  발견 당시 정보이며 예매·알림 발송 완료를 뜻하지 않습니다.
+                  발견 당시 정보입니다. 자동 예매는 하지 않으므로 코버스에서 직접 예매해야 합니다.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Recorded errors may remain after a retry succeeds. */}
+          {/* 확인에 성공하면 오류가 지워지므로, 남아 있는 오류는 가장 최근 확인의 오류다. */}
           {(job.status === "failed" || canCancel) && job.error && (
             <div className="flex items-start gap-2">
-              <span className="text-xs text-text-secondary min-w-10 shrink-0">
-                {canCancel ? "이전 오류" : "오류"}
-              </span>
-              <div className="text-xs min-w-0 break-words">
-                <p className="text-red-accent">{job.error}</p>
-                {canCancel && (
-                  <p className="text-text-secondary mt-1">
-                    마지막으로 기록된 오류이며 현재 상태와 다를 수 있습니다.
-                  </p>
-                )}
-              </div>
+              <span className="text-xs text-text-secondary min-w-10 shrink-0">오류</span>
+              <p className="text-xs text-red-accent min-w-0 break-words">{job.error}</p>
             </div>
           )}
           {job.status === "cancelled" && job.reason && (
@@ -200,6 +231,12 @@ export function JobHistoryItemCard({ job, onJobCancelled }: JobHistoryItemCardPr
             <div className="flex items-center gap-2">
               <span className="text-text-secondary">조회</span>
               <span className="text-orange-accent font-medium">{job.retryCount}회</span>
+            </div>
+          )}
+          {job.notifiedCount > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-text-secondary">알림</span>
+              <span className="text-green-dark font-medium">{job.notifiedCount}회</span>
             </div>
           )}
         </div>

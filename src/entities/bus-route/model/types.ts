@@ -27,9 +27,9 @@ export interface TimeSeatSummary {
 export interface FetchAvailableTimesResponse {
   success: boolean;
   date: string;
-  source: "live" | "cache" | "db-fallback";
-  checkedAt: string; // 코버스 조회 시각 (ISO)
+  source: "live" | "cache";
+  checkedAt: string; // 코버스 조회 시각 (ISO), 캐시 응답이면 원래 조회 시각
   times: string[];
-  seats: Record<string, TimeSeatSummary> | null; // 실시간 조회일 때만 있음
+  seats: Record<string, TimeSeatSummary>;
   count: number;
 }

@@ -19,7 +19,6 @@ npm run worker       # Background job worker (production)
 
 # Database
 npm run db:check-routes    # Update bus route master data
-npm run db:check-schedule  # Update route schedules
 npx prisma migrate dev     # Run migrations
 npx prisma generate        # Regenerate Prisma client
 
@@ -69,16 +68,23 @@ In Docker Compose, these are separate services sharing the same network. Workers
 ### Kobus Data Sources
 
 - **Areas/terminals/routes:** `readRotLinInf.ajax`, synced weekly (Mon 03:00 KST) by the maintenance worker; route tables are replaced in a transaction.
-- **Departure times and seats:** the timetable JSON `oprninf/alcninqr/readAlcnSrch.ajax` (session cookie from `oprnAlcnPage.do` required), read by `src/shared/lib/kobus-schedules.ts` and shared by the times API and the seat worker. Every bus counts, including sold-out (`ALCN_CHC=cnt0`) and departing-soon (`time0`); seats are `RMN_SATS_NUM`. The JSON has no via-stop field, so via locations are not collected.
-- `scsYn=Y` with zero buses (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. Other `scsYn` values (past date, beyond the sale window, unknown route) raise `KobusScheduleUnavailableError`; `rotVldChc=F` (no session) or an unexpected shape is an error, never "no seats".
-- `bus_schedules` is a weekly D+2 snapshot used only when the live lookup fails; the UI labels it as possibly inaccurate. Its `is_via_route`/`via_location` columns are no longer written.
+- **Departure times and seats:** the timetable JSON `oprninf/alcninqr/readAlcnSrch.ajax` (session cookie from `oprnAlcnPage.do` required), read by `src/shared/lib/kobus-schedules.ts` and shared by the times API and the seat worker. Every bus counts, including sold-out (`ALCN_CHC=cnt0`) and departing-soon (`time0`); seats are `RMN_SATS_NUM`. The JSON has no via-stop field, so via locations are not collected. The `deprDtm` date is built from `formatToParts`, never by trimming a localized date string (Next dev produced `2026/11/21`).
+- `scsYn=Y` with zero buses (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. Other `scsYn` values (past date, beyond the sale window, unknown route) raise `KobusScheduleUnavailableError`; `rotVldChc=F` raises `KobusSessionError` (the worker renews its shared session once); an unexpected shape is an error that names the first mismatched field. None of these mean "no seats".
+- If the live lookup fails the times API returns 502. There is no timetable fallback: the weekly `bus_schedules` crawl was removed on 2026-11-17 (table and its rows are kept; the worker deletes the retired `update-schedules` repeatable on start).
+
+### Monitoring
+
+- A job targets exact departure times (`targetTimes`) or a departure-time range (`targetTimeRange`, inclusive, `24:00` = midnight), never both. A range covers buses added later (holiday extra buses) and dates whose sale has not opened yet.
+- The worker checks every `JOB_CHECK_INTERVAL_MS` (1 minute) until the last target time (`getMonitoringDeadlineKST`). Each check stores `last_checked_at`, the check result, and clears `error` on success.
+- Telegram sends retry 3 times (5xx/429/network). If seats were found but the alert failed, the job keeps running with `notify_status=failed` and resends on the next check. A job completes only after an alert is sent, unless `keep_watching`: then it keeps checking and alerts again only for departures that newly have seats; it ends with `MONITORING_ENDED`.
+- `src/workers/kobus-health.ts` sends an admin Telegram alert after 5 consecutive integration failures across jobs (date/route refusals excluded) and when lookups recover; the maintenance worker alerts when the weekly route sync fails.
 
 ### Monitoring UI
 
-- The time selection API includes per-time remaining-seat totals, sold-out/departing-soon flags, and `checkedAt` (preserved by the 3-minute cache). A time is sold out only if every bus at that time is unavailable. DB fallback has `seats: null`; never invent current availability from the weekly timetable.
-- Time/terminal selection ignores obsolete responses after the user changes conditions. Changing the date clears selected times.
-- Completed history means seats were found, not that booking or notification delivery succeeded. A retry's last error can remain in history after recovery and is labeled as a previous recorded error.
-- Registration uses toasts. Failed registration preserves form choices; only success resets the form. No automatic booking is performed.
+- The time selection API includes per-time remaining-seat totals, sold-out/departing-soon flags, and `checkedAt` (preserved by the 1-minute cache). A time is sold out only if every bus at that time is unavailable.
+- Time/terminal selection keys responses by request, so late responses for old conditions are ignored. Changing the date clears selected times.
+- History shows the last check time and result for running jobs, the latest check error, the alert count, and seats found for completed jobs. No automatic booking is performed.
+- Registration uses toasts. Failed registration preserves form choices; only success resets the form. Past target times are rejected (400).
 
 ### Infrastructure
 

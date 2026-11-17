@@ -159,6 +159,15 @@ model JobHistory {
   createdAt     DateTime @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @map("updated_at") @db.DateTime(3)
   completedAt   DateTime? @map("completed_at") @db.DateTime(3)
+  // 시간대 범위 감시 (설정 시 targetTimes는 빈 배열)
+  timeRangeStart String?  @map("time_range_start") @db.VarChar(5)
+  timeRangeEnd   String?  @map("time_range_end") @db.VarChar(5)
+  // 좌석 발견 후에도 목표 시간까지 계속 감시
+  keepWatching   Boolean  @default(false) @map("keep_watching")
+  // 마지막 좌석 알림 전송 결과: sent | failed
+  notifyStatus   String?  @map("notify_status") @db.VarChar(20)
+  notifiedCount  Int      @default(0) @map("notified_count")
+  lastCheckedAt  DateTime? @map("last_checked_at") @db.DateTime(3)
 
   userId        String?  @map("user_id")
   user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)

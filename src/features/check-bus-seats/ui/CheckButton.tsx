@@ -11,11 +11,17 @@ interface CheckButtonProps {
 
 export function CheckButton({ formData, disabled, onSuccess }: CheckButtonProps) {
   const { isChecking, startSession } = useCheckSeats();
+  const isRange = formData.mode === "range";
+  const hasTimes = isRange
+    ? formData.timeRange.start <= formData.timeRange.end
+    : formData.selectedTimes.length > 0;
   const buttonText = isChecking
     ? "감시 등록 중..."
-    : formData.selectedTimes.length === 0
+    : !hasTimes
       ? "확인할 시간을 선택해주세요"
-      : `${formData.selectedTimes.length}개 시간 감시 시작`;
+      : isRange
+        ? `${formData.timeRange.start}~${formData.timeRange.end} 감시 시작`
+        : `${formData.selectedTimes.length}개 시간 감시 시작`;
 
   const handleClick = async () => {
     const registered = await startSession(formData);
@@ -32,7 +38,7 @@ export function CheckButton({ formData, disabled, onSuccess }: CheckButtonProps)
           !formData.departureTerminalCd ||
           !formData.arrivalTerminalCd ||
           !formData.date ||
-          formData.selectedTimes.length === 0
+          !hasTimes
         }
         className="w-full rounded-lg px-6 py-3 font-semibold transition-all hover:bg-green-dark disabled:opacity-50 disabled:cursor-not-allowed bg-green-primary text-white"
       >

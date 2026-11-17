@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { Area, TerminalData } from './types';
 import { fetchAreas, fetchTerminals, fetchDestinations } from '../api';
 
@@ -12,6 +12,41 @@ interface UseRouteSelectorParams {
   onArrivalTerminalChange: (terminalCd: string, terminalNm: string) => void;
 }
 
+type Loaded<T> = { key: string; data: T; error?: undefined } | { key: string; data?: undefined; error: string };
+
+/**
+ * key가 바뀌면 다시 불러온다. 응답은 요청 key와 함께 저장해, 조건을 빨리 바꿨을 때
+ * 늦게 도착한 이전 응답이 현재 목록을 덮어쓰지 않게 한다.
+ */
+function useKeyedFetch<T>(key: string | null, load: (key: string) => Promise<T>, label: string) {
+  const [loaded, setLoaded] = useState<Loaded<T> | null>(null);
+
+  useEffect(() => {
+    if (key === null) return;
+    let stale = false;
+    load(key).then(
+      (data) => {
+        if (!stale) setLoaded({ key, data });
+      },
+      (err: unknown) => {
+        if (stale) return;
+        console.error(`Failed to load ${label}:`, err);
+        setLoaded({ key, error: err instanceof Error ? err.message : `${label} 로드 실패` });
+      }
+    );
+    return () => {
+      stale = true;
+    };
+  }, [key, load, label]);
+
+  const current = key !== null && loaded?.key === key ? loaded : null;
+  return {
+    data: current?.data,
+    loading: key !== null && !current,
+    error: current?.error ?? null,
+  };
+}
+
 export function useRouteSelector({
   departureAreaCd,
   departureTerminalCd,
@@ -19,99 +54,16 @@ export function useRouteSelector({
   onDepartureTerminalChange,
   onArrivalTerminalChange,
 }: UseRouteSelectorParams) {
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [departureTerminals, setDepartureTerminals] = useState<TerminalData[]>([]);
-  const [arrivalTerminals, setArrivalTerminals] = useState<TerminalData[]>([]);
-  const [loading, setLoading] = useState({
-    areas: false,
-    departureTerminals: false,
-    arrivalTerminals: false,
-  });
-  const [error, setError] = useState<string | null>(null);
+  const areas = useKeyedFetch<Area[]>('all', fetchAreas, 'areas');
+  const departure = useKeyedFetch<TerminalData[]>(departureAreaCd || null, fetchTerminals, 'terminals');
+  const arrival = useKeyedFetch<TerminalData[]>(
+    departureTerminalCd || null,
+    fetchDestinations,
+    'destinations'
+  );
 
-  // 지역 정보 가져오기
-  useEffect(() => {
-    async function loadAreas() {
-      setLoading((prev) => ({ ...prev, areas: true }));
-      setError(null);
-      try {
-        const data = await fetchAreas();
-        setAreas(data);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : '지역 정보 로드 실패';
-        console.error('Failed to load areas:', err);
-        setError(errorMsg);
-      } finally {
-        setLoading((prev) => ({ ...prev, areas: false }));
-      }
-    }
-    loadAreas();
-  }, []);
-
-  // 출발 터미널 정보 가져오기
-  useEffect(() => {
-    setDepartureTerminals([]);
-    setLoading((prev) => ({ ...prev, departureTerminals: false }));
-    if (!departureAreaCd) {
-      return;
-    }
-
-    // 지역을 빠르게 바꿀 때 늦게 온 이전 응답이 목록을 덮어쓰지 않게 한다.
-    let stale = false;
-
-    async function loadDepartureTerminals() {
-      setLoading((prev) => ({ ...prev, departureTerminals: true }));
-      setError(null);
-      try {
-        const data = await fetchTerminals(departureAreaCd);
-        if (!stale) setDepartureTerminals(data);
-      } catch (err) {
-        if (stale) return;
-        const errorMsg = err instanceof Error ? err.message : '출발 터미널 로드 실패';
-        console.error('Failed to load departure terminals:', err);
-        setError(errorMsg);
-      } finally {
-        if (!stale) setLoading((prev) => ({ ...prev, departureTerminals: false }));
-      }
-    }
-    loadDepartureTerminals();
-
-    return () => {
-      stale = true;
-    };
-  }, [departureAreaCd]);
-
-  // 도착 터미널 정보 가져오기
-  useEffect(() => {
-    setArrivalTerminals([]);
-    setLoading((prev) => ({ ...prev, arrivalTerminals: false }));
-    if (!departureTerminalCd) {
-      return;
-    }
-
-    let stale = false;
-
-    async function loadArrivalTerminals() {
-      setLoading((prev) => ({ ...prev, arrivalTerminals: true }));
-      setError(null);
-      try {
-        const data = await fetchDestinations(departureTerminalCd);
-        if (!stale) setArrivalTerminals(data);
-      } catch (err) {
-        if (stale) return;
-        const errorMsg = err instanceof Error ? err.message : '도착 터미널 로드 실패';
-        console.error('Failed to load arrival terminals:', err);
-        setError(errorMsg);
-      } finally {
-        if (!stale) setLoading((prev) => ({ ...prev, arrivalTerminals: false }));
-      }
-    }
-    loadArrivalTerminals();
-
-    return () => {
-      stale = true;
-    };
-  }, [departureTerminalCd]);
+  const departureTerminals = useMemo(() => departure.data ?? [], [departure.data]);
+  const arrivalTerminals = useMemo(() => arrival.data ?? [], [arrival.data]);
 
   const handleAreaChange = useCallback(
     (areaCd: string) => {
@@ -140,11 +92,15 @@ export function useRouteSelector({
   );
 
   return {
-    areas,
+    areas: areas.data ?? [],
     departureTerminals,
     arrivalTerminals,
-    loading,
-    error,
+    loading: {
+      areas: areas.loading,
+      departureTerminals: departure.loading,
+      arrivalTerminals: arrival.loading,
+    },
+    error: areas.error ?? departure.error ?? arrival.error,
     handleAreaChange,
     handleDepartureTerminalChange,
     handleArrivalTerminalChange,

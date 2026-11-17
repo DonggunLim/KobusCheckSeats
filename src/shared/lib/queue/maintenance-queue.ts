@@ -3,7 +3,7 @@ import { getRedisConnection } from "../redis";
 
 // 유지보수 작업의 종류를 정의
 export interface MaintenanceJobData {
-  type: "UPDATE_ROUTES" | "UPDATE_SCHEDULES";
+  type: "UPDATE_ROUTES";
 }
 
 let maintenanceQueue: Queue<MaintenanceJobData> | null = null;

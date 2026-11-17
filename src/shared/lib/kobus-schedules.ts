@@ -10,13 +10,10 @@ export interface KobusScheduleRoute {
   arvlCd: string;
 }
 
-export interface ScheduleInfo {
+export interface KobusScheduleData {
   departureTime: string;
   busClass: string | null;
   busCompany: string | null;
-}
-
-export interface KobusScheduleData extends ScheduleInfo {
   remainSeatsText: string; // 예: "10 석"
   remainSeats: number;
   status: string; // 예: "예매가능", "매진", "출발임박"
@@ -30,6 +27,14 @@ export class KobusScheduleUnavailableError extends Error {
   constructor() {
     super("코버스에서 이 날짜/노선을 조회할 수 없습니다 (지난 날짜, 조회 가능 기간 밖, 또는 없는 노선)");
     this.name = "KobusScheduleUnavailableError";
+  }
+}
+
+/** 세션 쿠키가 없거나 만료되어 코버스가 조회를 거절한 경우 (rotVldChc "F"). 새 세션으로 재시도할 수 있다. */
+export class KobusSessionError extends Error {
+  constructor() {
+    super("코버스 배차 조회에 실패했습니다 (세션 없음)");
+    this.name = "KobusSessionError";
   }
 }
 
@@ -104,14 +109,17 @@ export async function fetchKobusRouteSchedules({
 export function parseKobusTimetable(body: unknown): KobusScheduleData[] {
   const parsed = timetableResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new Error("코버스 배차 조회 응답 형식이 예상과 다릅니다");
+    // 연동 경고에서 원인을 바로 알 수 있게 첫 번째 불일치 위치를 남긴다.
+    const issue = parsed.error.issues[0];
+    const where = issue ? ` (${issue.path.join(".") || "root"}: ${issue.message})` : "";
+    throw new Error(`코버스 배차 조회 응답 형식이 예상과 다릅니다${where}`);
   }
 
   const { rotVldChc, scsYn, alcnAllList } = parsed.data;
 
   if (scsYn !== "Y") {
     if (rotVldChc === "F") {
-      throw new Error("코버스 배차 조회에 실패했습니다 (세션 없음)");
+      throw new KobusSessionError();
     }
     throw new KobusScheduleUnavailableError();
   }

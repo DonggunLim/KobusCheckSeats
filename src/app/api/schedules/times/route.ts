@@ -10,7 +10,6 @@ import {
   hasAvailableSeats,
   KobusScheduleUnavailableError,
   type KobusScheduleData,
-  type ScheduleInfo,
 } from "@/shared/lib/kobus-schedules";
 import { logger } from "@/shared/lib/logger";
 
@@ -25,7 +24,7 @@ const schema = z.object({
     .optional(),
 });
 
-type ScheduleSource = "live" | "cache" | "db-fallback";
+type ScheduleSource = "live" | "cache";
 
 interface TimeSeatSummary {
   remainSeats: number; // 같은 시각 버스들의 잔여석 합
@@ -33,89 +32,47 @@ interface TimeSeatSummary {
   departingSoon: boolean; // 같은 시각 버스가 모두 출발임박 (웹 예매 불가, 앱 예매만 가능)
 }
 
-function summarizeSeats(schedules: KobusScheduleData[]): Record<string, TimeSeatSummary> {
-  const seats: Record<string, TimeSeatSummary> = {};
-  for (const schedule of schedules) {
-    const summary = (seats[schedule.departureTime] ??= {
-      remainSeats: 0,
-      soldOut: true,
-      departingSoon: true,
-    });
-    summary.remainSeats += schedule.remainSeats;
-    summary.soldOut &&= !hasAvailableSeats(schedule);
-    summary.departingSoon &&= schedule.status === KOBUS.STATUS.DEPARTING_SOON;
-  }
-  return seats;
-}
-
 function buildScheduleResponse({
   departure,
   arrival,
   date,
-  source,
   schedules,
-  seats,
 }: {
   departure: string;
   arrival: string;
   date: string;
-  source: ScheduleSource;
-  schedules: ScheduleInfo[];
-  seats: Record<string, TimeSeatSummary> | null; // 실시간 조회일 때만 있음
+  schedules: KobusScheduleData[];
 }) {
-  const uniqueTimes = Array.from(new Set(schedules.map((s) => s.departureTime))).sort();
-  const timeDetails = schedules.reduce(
-    (acc, schedule) => {
-      const time = schedule.departureTime;
-      if (!acc[time]) {
-        acc[time] = [];
-      }
-      acc[time].push({
-        busClass: schedule.busClass,
-        busCompany: schedule.busCompany,
-      });
-      return acc;
-    },
-    {} as Record<string, { busClass: string | null; busCompany: string | null }[]>
-  );
+  const seats: Record<string, TimeSeatSummary> = {};
+  const details: Record<string, { busClass: string | null; busCompany: string | null }[]> = {};
 
+  for (const schedule of schedules) {
+    const time = schedule.departureTime;
+    const summary = (seats[time] ??= { remainSeats: 0, soldOut: true, departingSoon: true });
+    summary.remainSeats += schedule.remainSeats;
+    summary.soldOut &&= !hasAvailableSeats(schedule);
+    summary.departingSoon &&= schedule.status === KOBUS.STATUS.DEPARTING_SOON;
+    (details[time] ??= []).push({ busClass: schedule.busClass, busCompany: schedule.busCompany });
+  }
+
+  const times = Object.keys(seats).sort();
   return {
     success: true,
     departure,
     arrival,
     date,
-    source,
+    source: "live" as ScheduleSource,
     checkedAt: new Date().toISOString(),
-    times: uniqueTimes,
-    details: timeDetails,
+    times,
+    details,
     seats,
-    count: uniqueTimes.length,
+    count: times.length,
   };
-}
-
-async function getFallbackSchedules(
-  departure: string,
-  arrival: string
-): Promise<ScheduleInfo[]> {
-  return prisma.busSchedules.findMany({
-    where: {
-      deprCd: departure,
-      arvlCd: arrival,
-    },
-    select: {
-      departureTime: true,
-      busClass: true,
-      busCompany: true,
-    },
-    orderBy: {
-      departureTime: "asc",
-    },
-  });
 }
 
 /**
  * GET /api/schedules/times?departure=010&arrival=300&date=2026-05-27
- * 특정 노선/날짜의 이용 가능한 출발 시간 목록 조회
+ * 특정 노선/날짜의 출발 시각과 시각별 잔여석을 코버스에서 실시간으로 조회
  */
 export async function GET(request: NextRequest) {
   try {
@@ -146,15 +103,7 @@ export async function GET(request: NextRequest) {
         route: { deprCd: departure, arvlCd: arrival },
         date: getKobusDateFromISODate(date),
       });
-
-      const result = buildScheduleResponse({
-        departure,
-        arrival,
-        date,
-        source: "live",
-        schedules,
-        seats: summarizeSeats(schedules),
-      });
+      const result = buildScheduleResponse({ departure, arrival, date, schedules });
 
       // 배차 0건은 명절 예매 오픈 전처럼 곧 바뀔 수 있으므로 캐시하지 않는다.
       if (result.count > 0) {
@@ -165,22 +114,12 @@ export async function GET(request: NextRequest) {
       if (error instanceof KobusScheduleUnavailableError) {
         return NextResponse.json({ error: error.message }, { status: 422 });
       }
-
-      log.warn(
-        { err: error, departure, arrival, date },
-        "Live schedule lookup failed, using DB fallback"
+      // 날짜와 무관한 예전 시간표로 대신 보여주면 틀린 시각을 고를 수 있으므로 실패를 그대로 알린다.
+      log.warn({ err: error, departure, arrival, date }, "Live schedule lookup failed");
+      return NextResponse.json(
+        { error: "코버스 실시간 조회에 실패했습니다. 잠시 후 다시 시도해주세요." },
+        { status: 502 }
       );
-      const fallbackSchedules = await getFallbackSchedules(departure, arrival);
-      const result = buildScheduleResponse({
-        departure,
-        arrival,
-        date,
-        source: "db-fallback",
-        schedules: fallbackSchedules,
-        seats: null,
-      });
-
-      return NextResponse.json(result);
     }
   } catch (error) {
     log.error({ err: error }, "Error fetching schedule times");

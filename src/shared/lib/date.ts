@@ -1,3 +1,5 @@
+import type { RouteQuery } from "@/shared/types/bus-check.types";
+
 /**
  * Date utility functions
  */
@@ -26,8 +28,7 @@ export function getTodayDate(): string {
 // ============================================================
 
 export interface FormattedDate {
-  ymd: string; // YYYYMMDD 형식
-  formatted: string; // "YYYY. MM. DD. (요일)" 형식
+  ymd: string; // YYYYMMDD 형식 (코버스 조회 파라미터)
 }
 
 export function getKSTDateString(date: Date = new Date()): string {
@@ -59,40 +60,20 @@ export function getTargetDateTimeKST(
 }
 
 /**
- * Date 객체를 KST 기준으로 포맷팅 (내부 함수)
+ * 감시를 끝낼 시각: 마지막 목표 출발 시각(시간대 범위면 범위 끝).
  */
-function formatDateKST(date: Date): FormattedDate {
-  // YYYYMMDD 형식
-  const ymd = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(date)
-    .replace(/\. /g, "")
-    .replace(".", "");
-
-  // "YYYY. MM. DD. (요일)" 형식
-  const formatted = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-  }).format(date);
-
-  return { ymd, formatted };
+export function getMonitoringDeadlineKST(query: RouteQuery): Date {
+  const lastTime = query.targetTimeRange?.end ?? [...query.targetTimes].sort().at(-1) ?? "00:00";
+  return getTargetDateTimeKST(query.targetYear, query.targetMonth, query.targetDate, lastTime);
 }
 
 /**
- * 오늘 기준 N일 후의 날짜를 KST로 포맷팅
- * @param daysOffset 오늘로부터의 일수 (양수: 미래, 음수: 과거)
+ * Date 객체를 KST 기준 YYYYMMDD로 변환한다 (내부 함수).
+ * 지역화된 날짜 문자열을 자르면 실행 환경의 ICU 데이터에 따라 "2026/11/21"처럼 달라질 수 있으므로
+ * formatToParts 기반의 getKSTDateString을 쓴다.
  */
-export function getTargetKST(daysOffset: number): FormattedDate {
-  const todayKST = new Date(`${getKSTDateString()}T00:00:00+09:00`);
-  const date = new Date(todayKST.getTime() + daysOffset * 24 * 60 * 60 * 1000);
-  return formatDateKST(date);
+function formatDateKST(date: Date): FormattedDate {
+  return { ymd: getKSTDateString(date).replace(/-/g, "") };
 }
 
 export function getKobusDateFromISODate(dateString: string): FormattedDate {

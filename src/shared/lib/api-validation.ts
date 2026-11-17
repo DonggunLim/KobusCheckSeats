@@ -41,16 +41,27 @@ export const statusSchema = z
   .enum(["waiting", "active", "completed", "failed", "cancelled"])
   .optional();
 
-export const queueJobSchema = z.object({
-  departureCd: terminalCdSchema,
-  arrivalCd: terminalCdSchema,
-  targetYear: z.number().int().min(2000).max(2100).optional(),
-  targetMonth: z.string().regex(/^\d{1,2}월$/, "targetMonth must be like '11월'"),
-  targetDate: z.string().regex(/^\d{1,2}$/, "targetDate must be a day number"),
-  targetTimes: z
-    .array(z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:MM format"))
-    .min(1, "targetTimes must have at least one entry"),
-  scheduleId: z.string().optional(),
-  priority: z.number().optional(),
-  delay: z.number().optional(),
-});
+const timeSchema = z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:MM format");
+
+export const queueJobSchema = z
+  .object({
+    departureCd: terminalCdSchema,
+    arrivalCd: terminalCdSchema,
+    targetYear: z.number().int().min(2000).max(2100).optional(),
+    targetMonth: z.string().regex(/^\d{1,2}월$/, "targetMonth must be like '11월'"),
+    targetDate: z.string().regex(/^\d{1,2}$/, "targetDate must be a day number"),
+    targetTimes: z.array(timeSchema).default([]),
+    // 이 범위(양 끝 포함)에 출발하는 모든 버스를 감시. 명절 임시차처럼 나중에 추가된 버스도 포함된다.
+    targetTimeRange: z
+      .object({ start: timeSchema, end: timeSchema })
+      .refine((range) => range.start <= range.end, "range start must not be after end")
+      .optional(),
+    keepWatching: z.boolean().default(false),
+    scheduleId: z.string().optional(),
+    priority: z.number().optional(),
+    delay: z.number().optional(),
+  })
+  .refine((job) => (job.targetTimes.length > 0) !== (job.targetTimeRange !== undefined), {
+    message: "Provide either targetTimes or targetTimeRange",
+    path: ["targetTimes"],
+  });

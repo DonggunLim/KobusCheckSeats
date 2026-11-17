@@ -3,8 +3,8 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getCheckSeatsQueue, type CheckSeatsJobData } from "@/shared/lib/queue/queue";
 import prisma from "@/shared/lib/prisma";
-import { getKSTNow, getTargetDateTimeKST } from "@/shared/lib/date";
-import { JOB_CANCEL_REASON_KEY } from "@/shared/constants/job";
+import { getKSTNow, getMonitoringDeadlineKST } from "@/shared/lib/date";
+import { JOB_CANCEL_REASON_KEY, JOB_CHECK_INTERVAL_MS } from "@/shared/constants/job";
 import { parseBody, parseSearchParams, queueJobSchema } from "@/shared/lib/api-validation";
 import { rateLimitJobSubmit } from "@/shared/lib/rate-limiter";
 import { logger } from "@/shared/lib/logger";
@@ -25,16 +25,17 @@ export async function POST(request: NextRequest) {
     const parsed = parseBody(queueJobSchema, body);
     if (!parsed.success) return parsed.response;
 
-    const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes, scheduleId } =
-      parsed.data;
-
-    // 목표 시간까지 필요한 attempts 계산
-    const lastTime = [...targetTimes].sort().reverse()[0];
-    const targetDateTime = getTargetDateTimeKST(targetYear, targetMonth, targetDate, lastTime);
-
-    const remainingTime = targetDateTime.getTime() - Date.now();
-    const retryInterval = 3 * 60 * 1000; // 3분
-    const maxAttempts = Math.max(1, Math.ceil(remainingTime / retryInterval));
+    const {
+      departureCd,
+      arrivalCd,
+      targetYear,
+      targetMonth,
+      targetDate,
+      targetTimes,
+      targetTimeRange,
+      keepWatching,
+      scheduleId,
+    } = parsed.data;
 
     const jobData: CheckSeatsJobData = {
       departureCd,
@@ -43,8 +44,16 @@ export async function POST(request: NextRequest) {
       targetMonth,
       targetDate,
       targetTimes,
+      targetTimeRange,
       scheduleId,
     };
+
+    // 목표 시간까지 확인 주기마다 한 번씩 확인하도록 attempts 계산
+    const remainingTime = getMonitoringDeadlineKST(jobData).getTime() - Date.now();
+    if (remainingTime <= 0) {
+      return NextResponse.json({ error: "선택한 출발 시간이 이미 지났습니다." }, { status: 400 });
+    }
+    const maxAttempts = Math.max(1, Math.ceil(remainingTime / JOB_CHECK_INTERVAL_MS));
 
     const queue = getCheckSeatsQueue();
 
@@ -67,6 +76,9 @@ export async function POST(request: NextRequest) {
         targetMonth,
         targetDate,
         targetTimes: JSON.stringify(targetTimes),
+        timeRangeStart: targetTimeRange?.start ?? null,
+        timeRangeEnd: targetTimeRange?.end ?? null,
+        keepWatching,
         status: "waiting",
         retryCount: 0,
         createdAt: getKSTNow(),
@@ -85,7 +97,7 @@ export async function POST(request: NextRequest) {
         attempts: maxAttempts,
         backoff: {
           type: "fixed",
-          delay: retryInterval,
+          delay: JOB_CHECK_INTERVAL_MS,
         },
       });
       queuedJobId = job.id ?? jobId;
