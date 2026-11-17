@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Korean express bus (Kobus) seat availability checker. Users submit monitoring jobs; background workers periodically scrape the Kobus website (via Cheerio/Axios) and notify a dedicated Telegram group when seats become available. The app does not require login.
+Korean express bus (Kobus) seat availability checker. Users submit monitoring jobs; background workers periodically query Kobus's timetable JSON (via Axios) and notify a dedicated Telegram group when seats become available. The app does not require login.
 
 ## Commands
 
@@ -54,7 +54,7 @@ In Docker Compose, these are separate services sharing the same network. Workers
 
 1. User submits a seat check job → `POST /api/queue/job` → BullMQ enqueues in Redis
 2. `src/workers/check-seats.worker.ts` picks up jobs
-3. Job logic in `src/workers/jobs/check-bus-seats.ts` scrapes Kobus via Cheerio
+3. Job logic in `src/workers/jobs/check-bus-seats.ts` queries the Kobus timetable JSON for the target date
 4. Job history tracked in `JobHistory` table via Prisma
 
 ### API Routes
@@ -69,9 +69,9 @@ In Docker Compose, these are separate services sharing the same network. Workers
 ### Kobus Data Sources
 
 - **Areas/terminals/routes:** `readRotLinInf.ajax`, synced weekly (Mon 03:00 KST) by the maintenance worker; route tables are replaced in a transaction.
-- **Departure times and seats:** `alcnSrch.do` for the selected date, parsed by `src/shared/lib/kobus-schedules.ts` (shared by the times API and the seat worker). All rows count, including sold-out (`매진`) and `출발임박` rows; seats come from the numeric `N 석` value.
-- A result page with zero rows (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. A redirect (past date, beyond the sale window, unknown route) is `KobusScheduleUnavailableError`; a page without the result table is an error, never "no seats".
-- `bus_schedules` is a weekly D+2 snapshot used only when the live lookup fails; the UI labels it as possibly inaccurate.
+- **Departure times and seats:** the timetable JSON `oprninf/alcninqr/readAlcnSrch.ajax` (session cookie from `oprnAlcnPage.do` required), read by `src/shared/lib/kobus-schedules.ts` and shared by the times API and the seat worker. Every bus counts, including sold-out (`ALCN_CHC=cnt0`) and departing-soon (`time0`); seats are `RMN_SATS_NUM`. The JSON has no via-stop field, so via locations are not collected.
+- `scsYn=Y` with zero buses (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. Other `scsYn` values (past date, beyond the sale window, unknown route) raise `KobusScheduleUnavailableError`; `rotVldChc=F` (no session) or an unexpected shape is an error, never "no seats".
+- `bus_schedules` is a weekly D+2 snapshot used only when the live lookup fails; the UI labels it as possibly inaccurate. Its `is_via_route`/`via_location` columns are no longer written.
 
 ### Infrastructure
 

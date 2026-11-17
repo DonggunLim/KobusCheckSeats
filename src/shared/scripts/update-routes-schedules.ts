@@ -16,8 +16,6 @@ interface ScheduleData {
   departureTime: string;
   busClass: string | null;
   busCompany: string | null;
-  isViaRoute: boolean;
-  viaLocation: string | null;
 }
 
 /**
@@ -51,12 +49,7 @@ export async function getRoutesSchedules(options: { disconnect?: boolean } = {})
 
       try {
         const schedules = await fetchKobusRouteSchedules({
-          route: {
-            deprCd: route.deprCd,
-            deprNm: route.departureTerminal.terminalNm,
-            arvlCd: route.arvlCd,
-            arvlNm: route.arrivalTerminal.terminalNm,
-          },
+          route: { deprCd: route.deprCd, arvlCd: route.arvlCd },
           date: { ymd: deprDt, formatted: deprDtAll },
           client,
         });
@@ -73,8 +66,6 @@ export async function getRoutesSchedules(options: { disconnect?: boolean } = {})
           departureTime: schedule.departureTime,
           busClass: schedule.busClass,
           busCompany: schedule.busCompany,
-          isViaRoute: schedule.isViaRoute,
-          viaLocation: schedule.viaLocation,
         }));
 
         if (scheduleList.length > 0) {

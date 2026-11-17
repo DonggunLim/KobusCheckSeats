@@ -1,4 +1,3 @@
-import prisma from "../../shared/lib/prisma";
 import type { RouteQuery, RouteScheduleSlot, CheckResult } from "../../shared/types/bus-check.types";
 import { KOBUS } from "@/shared/constants/kobus";
 import { getTargetDateKST } from "@/shared/lib/date";
@@ -9,7 +8,7 @@ const log = logger.child({ module: "check-bus-seats" });
 
 /**
  * 코버스 배차 조회 결과에서 목표 시간대의 잔여 좌석을 확인합니다.
- * 조회 결과 페이지를 받지 못하면(리다이렉트, 대기열, 구조 변경 등) "좌석 없음"이 아닌 실패로 반환합니다.
+ * 조회 응답을 받지 못하면(조회 거부, 세션 실패, 형식 변경 등) "좌석 없음"이 아닌 실패로 반환합니다.
  */
 export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
   const { departureCd, arrivalCd, targetYear, targetMonth, targetDate, targetTimes } = config;
@@ -20,14 +19,8 @@ export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
   let firstFoundTime: string | null = null;
 
   try {
-    const terminalNames = await getTerminalNames(departureCd, arrivalCd);
     const schedules = await fetchKobusRouteSchedules({
-      route: {
-        deprCd: departureCd,
-        deprNm: terminalNames.departureName,
-        arvlCd: arrivalCd,
-        arvlNm: terminalNames.arrivalName,
-      },
+      route: { deprCd: departureCd, arvlCd: arrivalCd },
       date: getTargetDateKST(targetMonth, targetDate, targetYear),
     });
 
@@ -86,29 +79,5 @@ export async function checkBusSeats(config: RouteQuery): Promise<CheckResult> {
       firstFoundTime: null,
       durationMs: Date.now() - startTime,
     };
-  }
-}
-
-async function getTerminalNames(
-  departureCd: string,
-  arrivalCd: string
-): Promise<{ departureName: string; arrivalName: string }> {
-  try {
-    const terminals = await prisma.terminal.findMany({
-      where: { terminalCd: { in: [departureCd, arrivalCd] } },
-      select: { terminalCd: true, terminalNm: true },
-    });
-
-    const terminalMap = new Map(terminals.map((t) => [t.terminalCd, t.terminalNm]));
-    return {
-      departureName: terminalMap.get(departureCd) || departureCd,
-      arrivalName: terminalMap.get(arrivalCd) || arrivalCd,
-    };
-  } catch (error) {
-    log.warn(
-      { err: error instanceof Error ? error.message : String(error) },
-      "DB lookup failed, using terminal codes as names"
-    );
-    return { departureName: departureCd, arrivalName: arrivalCd };
   }
 }

@@ -47,20 +47,10 @@ function buildScheduleResponse({
       acc[time].push({
         busClass: schedule.busClass,
         busCompany: schedule.busCompany,
-        isViaRoute: schedule.isViaRoute,
-        viaLocation: schedule.viaLocation,
       });
       return acc;
     },
-    {} as Record<
-      string,
-      {
-        busClass: string | null;
-        busCompany: string | null;
-        isViaRoute: boolean;
-        viaLocation: string | null;
-      }[]
-    >
+    {} as Record<string, { busClass: string | null; busCompany: string | null }[]>
   );
 
   return {
@@ -88,8 +78,6 @@ async function getFallbackSchedules(
       departureTime: true,
       busClass: true,
       busCompany: true,
-      isViaRoute: true,
-      viaLocation: true,
     },
     orderBy: {
       departureTime: "asc",
@@ -114,31 +102,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ...cached, source: "cache" satisfies ScheduleSource });
     }
 
+    // 공개 API이므로 알려진 터미널 코드만 코버스에 조회한다.
     const terminals = await prisma.terminal.findMany({
       where: { terminalCd: { in: [departure, arrival] } },
-      select: {
-        terminalCd: true,
-        terminalNm: true,
-      },
+      select: { terminalCd: true },
     });
-    const terminalMap = new Map(
-      terminals.map((terminal) => [terminal.terminalCd, terminal.terminalNm])
-    );
-    const departureName = terminalMap.get(departure);
-    const arrivalName = terminalMap.get(arrival);
+    const knownCodes = new Set(terminals.map((terminal) => terminal.terminalCd));
 
-    if (!departureName || !arrivalName) {
+    if (!knownCodes.has(departure) || !knownCodes.has(arrival)) {
       return NextResponse.json({ error: "Terminal not found" }, { status: 404 });
     }
 
     try {
       const schedules = await fetchKobusRouteSchedules({
-        route: {
-          deprCd: departure,
-          deprNm: departureName,
-          arvlCd: arrival,
-          arvlNm: arrivalName,
-        },
+        route: { deprCd: departure, arvlCd: arrival },
         date: getKobusDateFromISODate(date),
       });
 
