@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import axios from "axios";
 import { useJobHistoryContext } from "@/entities/job-history";
 import { CheckBusSeatsFormData } from "./types";
+import { toast } from "@/shared/ui/use-toast";
 
 export function useCheckSeats() {
   const [isChecking, setIsChecking] = useState(false);
@@ -10,8 +11,8 @@ export function useCheckSeats() {
   const startSession = useCallback(
     async (formData: CheckBusSeatsFormData) => {
       if (formData.selectedTimes.length === 0) {
-        alert("최소 1개 이상의 시간대를 선택해주세요.");
-        return;
+        toast({ title: "확인할 시간을 선택해주세요", variant: "destructive" });
+        return false;
       }
 
       setIsChecking(true);
@@ -27,18 +28,25 @@ export function useCheckSeats() {
         };
 
         // 큐에 Job 추가
-        const { data } = await axios.post("/api/queue/job", apiPayload);
+        await axios.post("/api/queue/job", apiPayload);
 
-        // Job 추가 성공 후 히스토리 즉시 갱신
         refetch();
-
-        return data;
+        toast({
+          title: "좌석 감시를 등록했습니다",
+          description: "3분마다 확인하고, 좌석이 발견되면 설정된 텔레그램 그룹으로 알려드립니다.",
+        });
+        return true;
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Job 추가 실패";
-        console.error("Job 추가 실패:", err);
-        alert(`Job 추가 실패: ${errorMessage}`);
-        throw err;
+        let message = "잠시 후 다시 시도해주세요.";
+        if (axios.isAxiosError<{ error?: string }>(err)) {
+          message =
+            err.response?.status === 429
+              ? "등록 요청이 많습니다. 1분 후 다시 시도해주세요."
+              : err.response?.data?.error || "서버에 연결하지 못했습니다.";
+        }
+        console.error("Job registration failed:", err);
+        toast({ title: "감시 등록에 실패했습니다", description: message, variant: "destructive" });
+        return false;
       } finally {
         setIsChecking(false);
       }

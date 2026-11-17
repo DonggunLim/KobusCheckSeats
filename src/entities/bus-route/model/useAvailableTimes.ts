@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchAvailableTimes } from "../api";
-import type { FetchAvailableTimesResponse } from "./types";
+import type { FetchAvailableTimesResponse, TimeSeatSummary } from "./types";
 import { getKSTDateString } from "@/shared/lib/date";
 
 export function useAvailableTimes(
@@ -14,36 +14,51 @@ export function useAvailableTimes(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<FetchAvailableTimesResponse["source"] | null>(null);
+  const [seats, setSeats] = useState<Record<string, TimeSeatSummary> | null>(null);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
 
   useEffect(() => {
+    setAvailableTimes([]);
+    setSource(null);
+    setSeats(null);
+    setCheckedAt(null);
+    setError(null);
+    setLoading(false);
+
     if (!departureTerminalCd || !arrivalTerminalCd) {
-      setAvailableTimes([]);
-      setSource(null);
       return;
     }
 
+    // 노선·날짜를 빠르게 바꾸면 이전 요청 응답이 늦게 도착해 다른 날짜 시간표를 덮어쓸 수 있다.
+    let stale = false;
+
     async function loadAvailableTimes() {
       setLoading(true);
-      setError(null);
-      setSource(null);
       try {
         const data = await fetchAvailableTimes(
           departureTerminalCd,
           arrivalTerminalCd,
           selectedDate
         );
+        if (stale) return;
 
         setAvailableTimes(filterFutureTimes(data.times, selectedDate));
         setSource(data.source);
+        setSeats(data.seats);
+        setCheckedAt(data.checkedAt);
       } catch (err) {
+        if (stale) return;
         console.error("Failed to load available times:", err);
         setError(err instanceof Error ? err.message : "시간대 조회 실패");
-        setAvailableTimes([]);
       } finally {
-        setLoading(false);
+        if (!stale) setLoading(false);
       }
     }
     loadAvailableTimes();
+
+    return () => {
+      stale = true;
+    };
   }, [departureTerminalCd, arrivalTerminalCd, selectedDate]);
 
   return {
@@ -51,6 +66,8 @@ export function useAvailableTimes(
     loading,
     error,
     source,
+    seats,
+    checkedAt,
   };
 }
 

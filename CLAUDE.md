@@ -73,6 +73,13 @@ In Docker Compose, these are separate services sharing the same network. Workers
 - `scsYn=Y` with zero buses (e.g. holiday dates before sale opens) is a valid empty answer and is not cached. Other `scsYn` values (past date, beyond the sale window, unknown route) raise `KobusScheduleUnavailableError`; `rotVldChc=F` (no session) or an unexpected shape is an error, never "no seats".
 - `bus_schedules` is a weekly D+2 snapshot used only when the live lookup fails; the UI labels it as possibly inaccurate. Its `is_via_route`/`via_location` columns are no longer written.
 
+### Monitoring UI
+
+- The time selection API includes per-time remaining-seat totals, sold-out/departing-soon flags, and `checkedAt` (preserved by the 3-minute cache). A time is sold out only if every bus at that time is unavailable. DB fallback has `seats: null`; never invent current availability from the weekly timetable.
+- Time/terminal selection ignores obsolete responses after the user changes conditions. Changing the date clears selected times.
+- Completed history means seats were found, not that booking or notification delivery succeeded. A retry's last error can remain in history after recovery and is labeled as a previous recorded error.
+- Registration uses toasts. Failed registration preserves form choices; only success resets the form. No automatic booking is performed.
+
 ### Infrastructure
 
 - **Database:** MySQL 8.0 via Prisma ORM

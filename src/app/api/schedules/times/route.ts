@@ -4,9 +4,12 @@ import prisma from "@/shared/lib/prisma";
 import { parseSearchParams, terminalCdSchema } from "@/shared/lib/api-validation";
 import { cache, TTL } from "@/shared/lib/cache";
 import { getKobusDateFromISODate, getKSTDateString } from "@/shared/lib/date";
+import { KOBUS } from "@/shared/constants/kobus";
 import {
   fetchKobusRouteSchedules,
+  hasAvailableSeats,
   KobusScheduleUnavailableError,
+  type KobusScheduleData,
   type ScheduleInfo,
 } from "@/shared/lib/kobus-schedules";
 import { logger } from "@/shared/lib/logger";
@@ -24,18 +27,41 @@ const schema = z.object({
 
 type ScheduleSource = "live" | "cache" | "db-fallback";
 
+interface TimeSeatSummary {
+  remainSeats: number; // 같은 시각 버스들의 잔여석 합
+  soldOut: boolean; // 같은 시각 버스가 모두 매진
+  departingSoon: boolean; // 같은 시각 버스가 모두 출발임박 (웹 예매 불가, 앱 예매만 가능)
+}
+
+function summarizeSeats(schedules: KobusScheduleData[]): Record<string, TimeSeatSummary> {
+  const seats: Record<string, TimeSeatSummary> = {};
+  for (const schedule of schedules) {
+    const summary = (seats[schedule.departureTime] ??= {
+      remainSeats: 0,
+      soldOut: true,
+      departingSoon: true,
+    });
+    summary.remainSeats += schedule.remainSeats;
+    summary.soldOut &&= !hasAvailableSeats(schedule);
+    summary.departingSoon &&= schedule.status === KOBUS.STATUS.DEPARTING_SOON;
+  }
+  return seats;
+}
+
 function buildScheduleResponse({
   departure,
   arrival,
   date,
   source,
   schedules,
+  seats,
 }: {
   departure: string;
   arrival: string;
   date: string;
   source: ScheduleSource;
   schedules: ScheduleInfo[];
+  seats: Record<string, TimeSeatSummary> | null; // 실시간 조회일 때만 있음
 }) {
   const uniqueTimes = Array.from(new Set(schedules.map((s) => s.departureTime))).sort();
   const timeDetails = schedules.reduce(
@@ -59,8 +85,10 @@ function buildScheduleResponse({
     arrival,
     date,
     source,
+    checkedAt: new Date().toISOString(),
     times: uniqueTimes,
     details: timeDetails,
+    seats,
     count: uniqueTimes.length,
   };
 }
@@ -125,6 +153,7 @@ export async function GET(request: NextRequest) {
         date,
         source: "live",
         schedules,
+        seats: summarizeSeats(schedules),
       });
 
       // 배차 0건은 명절 예매 오픈 전처럼 곧 바뀔 수 있으므로 캐시하지 않는다.
@@ -148,6 +177,7 @@ export async function GET(request: NextRequest) {
         date,
         source: "db-fallback",
         schedules: fallbackSchedules,
+        seats: null,
       });
 
       return NextResponse.json(result);

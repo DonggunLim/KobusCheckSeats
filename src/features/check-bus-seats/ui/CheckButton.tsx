@@ -11,11 +11,15 @@ interface CheckButtonProps {
 
 export function CheckButton({ formData, disabled, onSuccess }: CheckButtonProps) {
   const { isChecking, startSession } = useCheckSeats();
-  const buttonText = isChecking ? "작업 추가 중..." : "좌석 조회 시작";
+  const buttonText = isChecking
+    ? "감시 등록 중..."
+    : formData.selectedTimes.length === 0
+      ? "확인할 시간을 선택해주세요"
+      : `${formData.selectedTimes.length}개 시간 감시 시작`;
 
   const handleClick = async () => {
-    await startSession(formData);
-    onSuccess?.();
+    const registered = await startSession(formData);
+    if (registered) onSuccess?.();
   };
 
   return (
@@ -34,6 +38,9 @@ export function CheckButton({ formData, disabled, onSuccess }: CheckButtonProps)
       >
         {buttonText}
       </button>
+      <p className="mt-2 text-xs text-text-secondary">
+        자동 예매가 아닙니다. 좌석 알림을 받은 뒤 코버스에서 직접 예매해주세요.
+      </p>
     </div>
   );
 }

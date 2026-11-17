@@ -50,50 +50,67 @@ export function useRouteSelector({
 
   // 출발 터미널 정보 가져오기
   useEffect(() => {
+    setDepartureTerminals([]);
+    setLoading((prev) => ({ ...prev, departureTerminals: false }));
     if (!departureAreaCd) {
-      setDepartureTerminals([]);
       return;
     }
+
+    // 지역을 빠르게 바꿀 때 늦게 온 이전 응답이 목록을 덮어쓰지 않게 한다.
+    let stale = false;
 
     async function loadDepartureTerminals() {
       setLoading((prev) => ({ ...prev, departureTerminals: true }));
       setError(null);
       try {
         const data = await fetchTerminals(departureAreaCd);
-        setDepartureTerminals(data);
+        if (!stale) setDepartureTerminals(data);
       } catch (err) {
+        if (stale) return;
         const errorMsg = err instanceof Error ? err.message : '출발 터미널 로드 실패';
         console.error('Failed to load departure terminals:', err);
         setError(errorMsg);
       } finally {
-        setLoading((prev) => ({ ...prev, departureTerminals: false }));
+        if (!stale) setLoading((prev) => ({ ...prev, departureTerminals: false }));
       }
     }
     loadDepartureTerminals();
+
+    return () => {
+      stale = true;
+    };
   }, [departureAreaCd]);
 
   // 도착 터미널 정보 가져오기
   useEffect(() => {
+    setArrivalTerminals([]);
+    setLoading((prev) => ({ ...prev, arrivalTerminals: false }));
     if (!departureTerminalCd) {
-      setArrivalTerminals([]);
       return;
     }
+
+    let stale = false;
 
     async function loadArrivalTerminals() {
       setLoading((prev) => ({ ...prev, arrivalTerminals: true }));
       setError(null);
       try {
         const data = await fetchDestinations(departureTerminalCd);
-        setArrivalTerminals(data);
+        if (!stale) setArrivalTerminals(data);
       } catch (err) {
+        if (stale) return;
         const errorMsg = err instanceof Error ? err.message : '도착 터미널 로드 실패';
         console.error('Failed to load arrival terminals:', err);
         setError(errorMsg);
       } finally {
-        setLoading((prev) => ({ ...prev, arrivalTerminals: false }));
+        if (!stale) setLoading((prev) => ({ ...prev, arrivalTerminals: false }));
       }
     }
     loadArrivalTerminals();
+
+    return () => {
+      stale = true;
+    };
   }, [departureTerminalCd]);
 
   const handleAreaChange = useCallback(

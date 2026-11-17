@@ -36,6 +36,7 @@ export const KOBUS = {
   // 좌석 상태 문자열
   STATUS: {
     SOLDOUT: "매진", // 매진 상태
+    DEPARTING_SOON: "출발임박", // 출발 60분 이내: 웹 예매 불가, 모바일앱 예매만 가능
     NOT_AVAILABLE: "N/A", // 정보 없음
     NO_INFO: "정보 없음", // 정보 없음 (한글)
   },

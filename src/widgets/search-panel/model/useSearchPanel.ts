@@ -43,9 +43,11 @@ export function useSearchPanel() {
     if (date < today) {
       return;
     }
+    // 날짜마다 배차가 다르므로 이전 날짜에서 고른 시간은 버린다.
     setFormData((prev) => ({
       ...prev,
       date,
+      selectedTimes: [],
     }));
   };
 
