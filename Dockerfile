@@ -21,13 +21,11 @@ RUN npm ci --omit=dev
 FROM base AS builder
 WORKDIR /app
 
-ARG DATABASE_URL
-
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Prisma Client 생성 (TypeScript 타입 생성)
-RUN DATABASE_URL=$DATABASE_URL npx prisma generate
+# Prisma Client 생성 (TypeScript 타입 생성). Needs no database: images are built without secrets.
+RUN npx prisma generate
 
 # Next.js 빌드 시 환경 변수 검증 건너뛰기
 ENV SKIP_ENV_VALIDATION=true

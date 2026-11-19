@@ -1,7 +1,10 @@
+# Reference copy of /srv/kobusCheckSeats/docker-compose.yml on node-01 (operator-owned; CI no longer
+# downloads it). homeserver-deploy writes KOBUS_APP_IMAGE / KOBUS_WORKER_IMAGE (same commit SHA) into
+# the project's .env, so plain `docker compose` commands there always match the deployment record.
 services:
   # Next.js 앱 (프로덕션)
   app:
-    image: ghcr.io/donggunlim/kobuscheckseat:app-latest
+    image: ${KOBUS_APP_IMAGE:?KOBUS_APP_IMAGE is set in .env by homeserver-deploy}
     container_name: kobus-app
     command: ["./entrypoint.app.sh"]
     environment:
@@ -25,10 +28,11 @@ services:
     restart: always
 
   # Worker (프로덕션)
-  # 실행 시 --scale worker=N 으로 개수 조정
-  # 예: docker compose up -d --scale worker=2
+  # Number of workers: KOBUS_WORKER_REPLICAS in .env (default 1).
   worker:
-    image: ghcr.io/donggunlim/kobuscheckseat:worker-latest
+    image: ${KOBUS_WORKER_IMAGE:?KOBUS_WORKER_IMAGE is set in .env by homeserver-deploy}
+    deploy:
+      replicas: ${KOBUS_WORKER_REPLICAS:-1}
     command: ["./entrypoint.worker.sh"]
     environment:
       - NODE_ENV=production

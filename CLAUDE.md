@@ -97,13 +97,14 @@ In Docker Compose, these are separate services sharing the same network. Workers
 ### Docker
 
 - `docker-compose.dev.yml` — Local dev with live reload, uses `.env.local`
-- `docker-compose.prod.yml` — Production, pulls images from GHCR
+- `docker-compose.prod.yml` — Reference copy of the operator-owned server compose (`/srv/kobusCheckSeats/docker-compose.yml`); images come from `KOBUS_APP_IMAGE`/`KOBUS_WORKER_IMAGE` in the server `.env`, worker count from `KOBUS_WORKER_REPLICAS` (default 1). Changes here are not deployed automatically; the operator syncs the server copy.
 - `Dockerfile` — Multi-stage; separate `prod-app` and `prod-worker` targets
 - `entrypoint.app.sh` — Runs `prisma migrate deploy` before starting app
 - `entrypoint.worker.sh` — Runs `prisma generate` before starting worker
 
 ### CI/CD
 
-GitHub Actions (`.github/workflows/deploy.yml`) triggers on push to `main`:
-1. Builds and pushes two Docker images to GHCR (`app-latest`, `worker-latest`)
-2. SSH deploys to home server at `/srv/kobusCheckSeats`
+GitHub Actions (`.github/workflows/deploy.yml`) on pull requests and pushes to `main`:
+1. `verify`: `npm ci`, `prisma generate`, lint, `tsc --noEmit`, tests, `next build`.
+2. `image`: builds `ghcr.io/donggunlim/kobuscheckseat-app:<sha>` and `ghcr.io/donggunlim/kobuscheckseat-worker:<sha>` (revision label = commit); pushed only from `main`.
+3. `deploy` (`main` only): sends `deploy <sha>` over a restricted key to node-01, where the shared homeserver-deploy gate (adapter `services/kobuscheckseats/adapter.sh`) pulls and label-checks both images, backs up the `kobus` MySQL database, smoke-tests candidates privately (pending Prisma migrations stop the old app/worker first and are applied by the candidate), switches both images together and verifies; a failure after cutover restores the previous images (never the database).
